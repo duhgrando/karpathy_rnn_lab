@@ -10,7 +10,7 @@ and the cross-entropy / Softmax classifier applied "on every output vector
 simultaneously" that the article uses to train it.
 
 Pure functional core: every function returns a new value and never mutates
-an argument. RNNParams is a frozen dataclass; init_params is the only
+an argument. RNNParams is a frozen dataclass; initialize_rnn_parameters is the only
 "random" boundary and takes an explicit seed so it stays reproducible.
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ class RNNParams:
         return self.Why.shape[0]
 
 
-def init_params(vocab_size: int, hidden_size: int, seed: int = 0) -> RNNParams:
+def initialize_rnn_parameters(vocab_size: int, hidden_size: int, seed: int = 0) -> RNNParams:
     """Small random initialization -- the "random numbers" starting point
     the article describes training away from."""
     rng = np.random.default_rng(seed)

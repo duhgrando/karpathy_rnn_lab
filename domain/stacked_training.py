@@ -1,6 +1,6 @@
 """Domain: backpropagation through a stack of RNN layers.
 
-Each layer's BPTT is exactly domain/training.py's bptt() -- the same
+Each layer's BPTT is exactly domain/training.py's backpropagate_through_time() -- the same
 tanh'(h) chain rule -- with one twist: a middle or bottom layer's "loss
 gradient" doesn't come from Why/targets directly, it comes from the layer
 *above* it (that layer's own dh_raw, pulled back through that layer's own
@@ -140,7 +140,7 @@ def _accumulate_layer_gradients(
         gradient_from_above = layer.Wxh.T @ dh_raw  # hands off to the layer below
 
 
-def stacked_bptt(
+def stacked_backpropagate_through_time(
     params: StackedRNNParams,
     inputs: Sequence[np.ndarray],
     targets: Sequence[int],

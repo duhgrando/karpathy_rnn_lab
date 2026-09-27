@@ -11,7 +11,7 @@ the vanilla RNN's single tanh:
     y_t = Why h_t + by                          # same output projection as the vanilla RNN
 
 Same pure-functional shape as domain/rnn_model.py: LSTMParams is a frozen
-dataclass, init_lstm_params is the only random boundary, and every function
+dataclass, initialize_lstm_parameters is the only random boundary, and every function
 returns new values rather than mutating its arguments.
 """
 from __future__ import annotations
@@ -50,8 +50,8 @@ class LSTMParams:
         return self.Why.shape[0]
 
 
-def init_lstm_params(vocab_size: int, hidden_size: int, seed: int = 0) -> LSTMParams:
-    """Small random initialization, matching init_params(). The forget gate
+def initialize_lstm_parameters(vocab_size: int, hidden_size: int, seed: int = 0) -> LSTMParams:
+    """Small random initialization, matching initialize_rnn_parameters(). The forget gate
     bias starts at 1 rather than 0 -- a well-known trick (Jozefowicz et al.,
     2015) that makes the cell default to *remembering* early in training,
     which is exactly what tests/test_vanishing_gradient_comparison.py relies
@@ -79,7 +79,7 @@ def compute_gates(
     params: LSTMParams, x_t: np.ndarray, h_prev: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The four gate activations for one step. Factored out of lstm_step so
-    lstm_bptt can recompute the *exact* same values during backprop instead
+    lstm_backpropagate_through_time can recompute the *exact* same values during backprop instead
     of caching a parallel copy of them."""
     i = sigmoid(params.Wxi @ x_t + params.Whi @ h_prev + params.bi)
     f = sigmoid(params.Wxf @ x_t + params.Whf @ h_prev + params.bf)
@@ -108,7 +108,7 @@ def lstm_forward_sequence(
 
     Returns (hs, cs, ys, ps): hs/cs each have one extra leading entry
     (hs[0] == h0, cs[0] == c0), the same layout forward_sequence() uses for
-    the vanilla RNN, so lstm_bptt never needs to re-derive it.
+    the vanilla RNN, so lstm_backpropagate_through_time never needs to re-derive it.
     """
     hs, cs, ys, ps = [h0], [c0], [], []
     h, c = h0, c0

@@ -3,7 +3,7 @@ RNN, matching Karpathy's reference min-char-rnn implementation linked from
 the article ("a minimal character-level RNN language model in
 Python/numpy").
 
-bptt() is pure at its boundary: given the same arguments it returns the
+backpropagate_through_time() is pure at its boundary: given the same arguments it returns the
 same new values, and it never mutates params, hs, or ps. It accumulates
 into local arrays for performance, exactly the way a hand-written BPTT loop
 would -- but that bookkeeping is invisible to callers, who only ever see a
@@ -40,7 +40,7 @@ class AdagradMemory:
     mby: np.ndarray
 
 
-def bptt(
+def backpropagate_through_time(
     params: RNNParams,
     inputs: Sequence[np.ndarray],
     targets: Sequence[int],

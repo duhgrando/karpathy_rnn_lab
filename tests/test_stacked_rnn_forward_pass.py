@@ -4,7 +4,7 @@ state gets projected to vocab-sized output logits.
 """
 import numpy as np
 
-from domain.stacked_rnn import init_stacked_params, stacked_forward_sequence, stacked_step
+from domain.stacked_rnn import initialize_stacked_rnn_parameters, stacked_forward_sequence, stacked_step
 from domain.vocabulary import build_vocabulary, encode, one_hot
 
 
@@ -12,7 +12,7 @@ def test_layer_shapes_chain_correctly_bottom_to_top():
     """Layer 0 reads the vocab-sized one-hot input; layer 1 reads layer 0's
     hidden state; Why projects the *top* layer's hidden state to logits."""
     vocab = build_vocabulary("helo")
-    params = init_stacked_params(vocab.size, hidden_sizes=(5, 3), seed=0)
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=0)
 
     assert params.layers[0].Wxh.shape == (5, vocab.size)  # bottom layer <- one-hot input
     assert params.layers[1].Wxh.shape == (3, 5)  # top layer <- bottom layer's hidden state
@@ -21,7 +21,7 @@ def test_layer_shapes_chain_correctly_bottom_to_top():
 
 def test_stacked_step_produces_one_hidden_state_per_layer_and_a_valid_distribution():
     vocab = build_vocabulary("helo")
-    params = init_stacked_params(vocab.size, hidden_sizes=(5, 3), seed=1)
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=1)
     h0s = [np.zeros((5, 1)), np.zeros((3, 1))]
     x = one_hot(vocab, 0)
 
@@ -40,8 +40,8 @@ def test_a_deeper_stack_produces_a_different_output_than_a_shallow_one():
     vocab = build_vocabulary("helo")
     x = one_hot(vocab, 0)
 
-    shallow = init_stacked_params(vocab.size, hidden_sizes=(5,), seed=2)
-    deep = init_stacked_params(vocab.size, hidden_sizes=(5, 5), seed=2)
+    shallow = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5,), seed=2)
+    deep = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 5), seed=2)
 
     _, y_shallow, _ = stacked_step(shallow, x, [np.zeros((5, 1))])
     _, y_deep, _ = stacked_step(deep, x, [np.zeros((5, 1)), np.zeros((5, 1))])
@@ -51,7 +51,7 @@ def test_a_deeper_stack_produces_a_different_output_than_a_shallow_one():
 
 def test_stacked_step_never_mutates_its_inputs():
     vocab = build_vocabulary("helo")
-    params = init_stacked_params(vocab.size, hidden_sizes=(4, 4), seed=3)
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(4, 4), seed=3)
     h0s = [np.zeros((4, 1)), np.zeros((4, 1))]
     x = one_hot(vocab, 0)
     h0s_before = [h.copy() for h in h0s]
@@ -65,7 +65,7 @@ def test_stacked_step_never_mutates_its_inputs():
 
 def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0_per_layer():
     vocab = build_vocabulary("helo")
-    params = init_stacked_params(vocab.size, hidden_sizes=(5, 3), seed=4)
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=4)
     inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
     h0s = [np.zeros((5, 1)), np.zeros((3, 1))]
 

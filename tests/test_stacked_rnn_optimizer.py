@@ -3,7 +3,7 @@ stacked_adagrad_update walk every layer plus the shared output projection,
 reusing domain/optimization.py's adagrad_step() per array."""
 import numpy as np
 
-from domain.stacked_rnn import init_stacked_params
+from domain.stacked_rnn import initialize_stacked_rnn_parameters
 from domain.stacked_training import (
     LayerGradients,
     StackedGradients,
@@ -30,7 +30,7 @@ def _ones_gradients(params):
 
 
 def test_zero_stacked_memory_matches_every_layers_shapes():
-    params = init_stacked_params(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
+    params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
 
     memory = zero_stacked_memory(params)
 
@@ -41,7 +41,7 @@ def test_zero_stacked_memory_matches_every_layers_shapes():
 
 
 def test_clip_stacked_gradients_bounds_every_layer():
-    params = init_stacked_params(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
+    params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
     extreme = _ones_gradients(params)
     extreme.layers[0].dWxh[:] = 100.0
 
@@ -51,7 +51,7 @@ def test_clip_stacked_gradients_bounds_every_layer():
 
 
 def test_stacked_adagrad_update_moves_every_layer_against_its_gradient():
-    params = init_stacked_params(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=1)
+    params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=1)
     memory = zero_stacked_memory(params)
     grads = _ones_gradients(params)
 
@@ -63,7 +63,7 @@ def test_stacked_adagrad_update_moves_every_layer_against_its_gradient():
 
 
 def test_stacked_adagrad_update_never_mutates_its_inputs():
-    params = init_stacked_params(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=2)
+    params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=2)
     memory = zero_stacked_memory(params)
     grads = _ones_gradients(params)
     original_first_layer_Wxh = params.layers[0].Wxh.copy()

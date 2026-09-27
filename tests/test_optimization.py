@@ -8,17 +8,17 @@ in a docstring.
 """
 import numpy as np
 
-from domain.lstm_model import init_lstm_params
+from domain.lstm_model import initialize_lstm_parameters
 from domain.lstm_training import LSTMMemory
 from domain.optimization import adagrad_update, clip_gradients, zero_memory
-from domain.rnn_model import init_params
+from domain.rnn_model import initialize_rnn_parameters
 from domain.training import AdagradMemory, Gradients
 from domain.lstm_training import LSTMGradients
 
 
 def test_zero_memory_works_for_both_rnn_and_lstm_params():
-    rnn_params = init_params(vocab_size=4, hidden_size=3, seed=0)
-    lstm_params = init_lstm_params(vocab_size=4, hidden_size=3, seed=0)
+    rnn_params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=0)
+    lstm_params = initialize_lstm_parameters(vocab_size=4, hidden_size=3, seed=0)
 
     rnn_memory = zero_memory(rnn_params, AdagradMemory)
     lstm_memory = zero_memory(lstm_params, LSTMMemory)
@@ -47,8 +47,8 @@ def test_clip_gradients_works_for_both_gradient_shapes():
 
 
 def test_adagrad_update_moves_both_kinds_of_params_against_their_gradient():
-    rnn_params = init_params(vocab_size=4, hidden_size=3, seed=1)
-    lstm_params = init_lstm_params(vocab_size=4, hidden_size=3, seed=1)
+    rnn_params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=1)
+    lstm_params = initialize_lstm_parameters(vocab_size=4, hidden_size=3, seed=1)
     rnn_memory = zero_memory(rnn_params, AdagradMemory)
     lstm_memory = zero_memory(lstm_params, LSTMMemory)
 

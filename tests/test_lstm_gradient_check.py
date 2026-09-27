@@ -1,6 +1,6 @@
 """Same technique as test_gradient_check.py, applied to the LSTM's gated
 BPTT: perturb each of the 14 parameter matrices by a tiny epsilon and check
-the resulting change in loss against lstm_bptt's analytic gradient. Given
+the resulting change in loss against lstm_backpropagate_through_time's analytic gradient. Given
 how much more intricate the LSTM's chain rule is than the vanilla RNN's
 (four gates, a separate cell-state path), this check is what makes
 trusting domain/lstm_training.py's hand-derived math reasonable at all.
@@ -8,8 +8,8 @@ trusting domain/lstm_training.py's hand-derived math reasonable at all.
 import numpy as np
 import pytest
 
-from domain.lstm_model import init_lstm_params, lstm_forward_sequence
-from domain.lstm_training import lstm_bptt
+from domain.lstm_model import initialize_lstm_parameters, lstm_forward_sequence
+from domain.lstm_training import lstm_backpropagate_through_time
 from domain.rnn_model import cross_entropy_loss
 from domain.vocabulary import build_vocabulary, encode, one_hot
 
@@ -30,14 +30,14 @@ def _loss_for_params(params, inputs, targets, h0, c0):
 @pytest.mark.parametrize("field", LSTM_PARAM_FIELDS)
 def test_analytic_gradient_matches_numerical_gradient(field):
     vocab = build_vocabulary("hello")
-    params = init_lstm_params(vocab.size, hidden_size=6, seed=1)
+    params = initialize_lstm_parameters(vocab.size, hidden_size=6, seed=1)
     text_indices = encode(vocab, "hello")
     inputs = [one_hot(vocab, i) for i in text_indices[:-1]]
     targets = text_indices[1:]
     h0, c0 = np.zeros((6, 1)), np.zeros((6, 1))
 
     hs, cs, _, ps = lstm_forward_sequence(params, inputs, h0, c0)
-    grads, _, _ = lstm_bptt(params, inputs, targets, hs, cs, ps)
+    grads, _, _ = lstm_backpropagate_through_time(params, inputs, targets, hs, cs, ps)
     analytic = getattr(grads, f"d{field}")
     param_matrix = getattr(params, field)
 
@@ -68,19 +68,19 @@ def test_analytic_gradient_matches_numerical_gradient(field):
 
 
 def test_dh0_and_dc0_match_numerical_gradients_of_the_initial_state():
-    """lstm_bptt's extra return values -- dh0 = dL/dh0 and dc0 = dL/dc0 --
+    """lstm_backpropagate_through_time's extra return values -- dh0 = dL/dh0 and dc0 = dL/dc0 --
     are what tests/test_vanishing_gradient_comparison.py measures gradient
     retention with, so they need the same numerical trust as the weight
     gradients above."""
     vocab = build_vocabulary("hello")
-    params = init_lstm_params(vocab.size, hidden_size=6, seed=1)
+    params = initialize_lstm_parameters(vocab.size, hidden_size=6, seed=1)
     text_indices = encode(vocab, "hello")
     inputs = [one_hot(vocab, i) for i in text_indices[:-1]]
     targets = text_indices[1:]
     h0, c0 = np.zeros((6, 1)), np.zeros((6, 1))
 
     hs, cs, _, ps = lstm_forward_sequence(params, inputs, h0, c0)
-    _, dh0, dc0 = lstm_bptt(params, inputs, targets, hs, cs, ps)
+    _, dh0, dc0 = lstm_backpropagate_through_time(params, inputs, targets, hs, cs, ps)
 
     epsilon = 1e-4
     for name, base_state, analytic in [("h0", h0, dh0), ("c0", c0, dc0)]:

@@ -41,8 +41,9 @@ see "On char-rnn" below.
   `coverage.py` (line coverage) into the published CRAP formula, so
   "quality < 5" is something you can actually run, not just assert.
 
-The domain layer's internal loops (`bptt`, `lstm_bptt`, `stacked_bptt`, the
-Adagrad `adagrad_step` closure) accumulate into local numpy arrays for
+The domain layer's internal loops (`backpropagate_through_time`,
+`lstm_backpropagate_through_time`, `stacked_backpropagate_through_time`,
+the Adagrad `adagrad_step` closure) accumulate into local numpy arrays for
 performance — the same way a hand-written BPTT loop would — but that's
 invisible to callers, who only ever get back a fresh `*Gradients` /
 `*Params` / `*Memory` value. Purity is a property of the function's
@@ -58,7 +59,8 @@ project follows: a params field `Wxh` has a gradient field `dWxh` and a
 memory field `mWxh`. `tests/test_optimization.py` exercises the same three
 functions against both `Gradients`/`AdagradMemory` (RNN) and
 `LSTMGradients`/`LSTMMemory` (LSTM) to prove that rather than just assert
-it. Only the chain rule itself (`bptt` vs. `lstm_bptt`) is cell-specific,
+it. Only the chain rule itself (`backpropagate_through_time` vs.
+`lstm_backpropagate_through_time`) is cell-specific,
 because that genuinely differs.
 
 ## Running it
@@ -90,7 +92,7 @@ python quality/crap.py
 | `test_vocabulary.py` | *Character-Level Language Models* | 1-of-k ("one hot") encoding of a small vocabulary |
 | `test_forward_pass.py` | *RNN computation* | `h = tanh(Whh·h + Wxh·x + bh)`; output is a real probability distribution; the hidden state actually matters — same input, different `h`, different output |
 | `test_loss.py` | *"a more technical explanation ... Softmax classifier"* | cross-entropy loss behaves as expected: max at uniform, low when confident-and-correct, high when confident-and-wrong |
-| `test_gradient_check.py` | *"we can run the backpropagation algorithm ..."* | a numerical gradient check — the same technique Karpathy's own reference gist ships — on all of `bptt`'s weight gradients, plus its `dh0` return value |
+| `test_gradient_check.py` | *"we can run the backpropagation algorithm ..."* | a numerical gradient check — the same technique Karpathy's own reference gist ships — on all of `backpropagate_through_time`'s weight gradients, plus its `dh0` return value |
 | `test_gradient_clipping.py` | (reference implementation, not named in the prose) | gradients get bounded so one bad batch can't blow up training |
 | `test_adagrad_update.py` | *"per-parameter adaptive learning rate methods"* | Adagrad moves parameters against the gradient; a parameter that already saw big gradients gets a smaller effective step |
 | `test_optimization.py` | (design property, not article prose) | `clip_gradients`/`zero_memory`/`adagrad_update` work identically for the RNN's and the LSTM's dataclasses — proof the "one optimizer" design holds |
@@ -129,8 +131,8 @@ same pure/DDD/gradient-checked style as everything else here.
   forward-pass-and-gradient-checked (correctness is proven), but
   `application/train_service.py` only wires up the vanilla RNN's training
   loop. Adding an LSTM- or stack-flavored `train()` is mostly plumbing at
-  this point — swap in `lstm_forward_sequence`/`lstm_bptt` or
-  `stacked_forward_sequence`/`stacked_bptt` and the matching `*Memory`
+  this point — swap in `lstm_forward_sequence`/`lstm_backpropagate_through_time` or
+  `stacked_forward_sequence`/`stacked_backpropagate_through_time` and the matching `*Memory`
   type — but wasn't done here to keep this round's scope bounded.
 - **Stacking LSTM cells**, dropout between layers, and minibatching —
   all real char-rnn features, all compose the same way conceptually, none

@@ -1,10 +1,10 @@
 """Domain: backpropagation through time for the LSTM cell.
 
-Mirrors domain/training.py's bptt() exactly in shape (pure, accumulates
+Mirrors domain/training.py's backpropagate_through_time() exactly in shape (pure, accumulates
 locally, returns a fresh Gradients-like value plus dh0/dc0), but the chain
 rule genuinely differs from the vanilla RNN's because of the four gates and
 the separate cell-state path, so it gets its own function rather than
-trying to share bptt() via a flag.
+trying to share backpropagate_through_time() via a flag.
 """
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ class LSTMMemory:
     mby: np.ndarray
 
 
-def lstm_bptt(
+def lstm_backpropagate_through_time(
     params: LSTMParams,
     inputs: Sequence[np.ndarray],
     targets: Sequence[int],
@@ -66,7 +66,7 @@ def lstm_bptt(
     produced at step t -- lstm_forward_sequence()'s layout.
 
     Returns (grads, dh0, dc0): dh0 = dL/dh0 and dc0 = dL/dc0, the same kind
-    of "how far back did the gradient reach" signal bptt() returns for the
+    of "how far back did the gradient reach" signal backpropagate_through_time() returns for the
     vanilla RNN. See tests/test_vanishing_gradient_comparison.py.
     """
     dWxi, dWhi, dbi = np.zeros_like(params.Wxi), np.zeros_like(params.Whi), np.zeros_like(params.bi)

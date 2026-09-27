@@ -2,14 +2,14 @@
 back in' and § 'Temperature'."""
 import numpy as np
 
-from domain.rnn_model import init_params
+from domain.rnn_model import initialize_rnn_parameters
 from domain.sampling import _temperature_scaled, sample
 from domain.vocabulary import build_vocabulary
 
 
 def test_sample_generates_the_requested_length_of_valid_indices():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8, seed=4)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8, seed=4)
     h0 = np.zeros((8, 1))
 
     generated = sample(
@@ -23,7 +23,7 @@ def test_sample_generates_the_requested_length_of_valid_indices():
 
 def test_sample_is_reproducible_given_the_same_rng_seed():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8, seed=4)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8, seed=4)
     h0 = np.zeros((8, 1))
 
     first = sample(params, vocab, h0, 0, 15, 1.0, np.random.default_rng(42))
@@ -58,7 +58,7 @@ def test_temperature_above_one_flattens_the_distribution():
 
 def test_higher_temperature_gives_at_least_as_much_diversity_as_lower():
     vocab = build_vocabulary("the quick fox jumps over lazy dogs")
-    params = init_params(vocab.size, hidden_size=16, seed=5)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=16, seed=5)
     h0 = np.zeros((16, 1))
 
     low = sample(params, vocab, h0, 0, 60, temperature=0.01, rng=np.random.default_rng(2))

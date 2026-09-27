@@ -1,13 +1,13 @@
 """§ 'RNN computation' -- h = tanh(Whh h + Wxh x + bh), y = Why h + by."""
 import numpy as np
 
-from domain.rnn_model import forward_sequence, forward_step, init_params
+from domain.rnn_model import forward_sequence, forward_step, initialize_rnn_parameters
 from domain.vocabulary import build_vocabulary, encode, one_hot
 
 
 def test_rnn_params_expose_their_own_hidden_and_vocab_size():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
 
     assert params.hidden_size == 8
     assert params.vocab_size == vocab.size
@@ -15,7 +15,7 @@ def test_rnn_params_expose_their_own_hidden_and_vocab_size():
 
 def test_forward_step_hidden_state_is_squashed_to_tanh_range():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
     h0 = np.zeros((8, 1))
     x = one_hot(vocab, 0)
 
@@ -27,7 +27,7 @@ def test_forward_step_hidden_state_is_squashed_to_tanh_range():
 
 def test_forward_step_output_is_a_probability_distribution():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
     h0 = np.zeros((8, 1))
     x = one_hot(vocab, 0)
 
@@ -42,7 +42,7 @@ def test_forward_step_depends_on_hidden_state_not_only_current_input():
     """'the RNN therefore cannot rely on the input alone and must use its
     recurrent connection to keep track of the context'."""
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
     x = one_hot(vocab, vocab.chars.index("l"))
 
     _, y_from_zero_state, _ = forward_step(params, x, np.zeros((8, 1)))
@@ -53,7 +53,7 @@ def test_forward_step_depends_on_hidden_state_not_only_current_input():
 
 def test_forward_step_never_mutates_its_inputs():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
     h0 = np.zeros((8, 1))
     x = one_hot(vocab, 0)
     h0_before, x_before = h0.copy(), x.copy()
@@ -66,7 +66,7 @@ def test_forward_step_never_mutates_its_inputs():
 
 def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0():
     vocab = build_vocabulary("helo")
-    params = init_params(vocab.size, hidden_size=8)
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
     inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
     h0 = np.zeros((8, 1))
 

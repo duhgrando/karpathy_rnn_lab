@@ -35,7 +35,7 @@ class StackedRNNParams:
     by: np.ndarray
 
 
-def init_stacked_params(
+def initialize_stacked_rnn_parameters(
     vocab_size: int, hidden_sizes: Sequence[int], seed: int = 0
 ) -> StackedRNNParams:
     """`hidden_sizes` has one entry per layer, bottom to top -- e.g.
@@ -91,7 +91,7 @@ def stacked_forward_sequence(
     Returns (hs_by_layer, ys, ps): hs_by_layer[layer] is a tuple of hidden
     states for that layer, with the same "one extra leading entry" layout
     forward_sequence() uses (hs_by_layer[layer][0] == h0s[layer]), so
-    stacked_bptt never needs to re-derive it.
+    stacked_backpropagate_through_time never needs to re-derive it.
     """
     hs_by_layer: List[List[np.ndarray]] = [[h0] for h0 in h0s]
     ys, ps = [], []

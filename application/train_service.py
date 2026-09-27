@@ -16,11 +16,11 @@ from domain.rnn_model import (
     RNNParams,
     cross_entropy_loss,
     forward_sequence,
-    init_params,
+    initialize_rnn_parameters,
 )
 from domain.optimization import adagrad_update, clip_gradients, zero_memory
 from domain.sampling import sample as sample_from_model  # re-exported for convenience
-from domain.training import AdagradMemory, bptt
+from domain.training import AdagradMemory, backpropagate_through_time
 from domain.vocabulary import Vocabulary, encode, one_hot
 
 __all__ = [
@@ -78,7 +78,7 @@ def _run_batch(
 
     hs, _, ps = forward_sequence(state.params, inputs, state.hidden)
     loss = cross_entropy_loss(ps, target_ids)
-    grads, _ = bptt(state.params, inputs, target_ids, hs, ps)
+    grads, _ = backpropagate_through_time(state.params, inputs, target_ids, hs, ps)
     grads = clip_gradients(grads)
     new_params, new_memory = adagrad_update(
         state.params, grads, state.memory, config.learning_rate
@@ -123,7 +123,7 @@ def train(
     average of the loss.
     """
     indices = encode(vocab, corpus)
-    params = init_params(vocab.size, config.hidden_size, config.seed)
+    params = initialize_rnn_parameters(vocab.size, config.hidden_size, config.seed)
     state = TrainerState(
         params=params,
         memory=zero_memory(params, AdagradMemory),

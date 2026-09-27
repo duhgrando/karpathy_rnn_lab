@@ -3,7 +3,7 @@ updates' -- Adagrad, as used in Karpathy's reference implementation."""
 import numpy as np
 
 from domain.optimization import adagrad_update, zero_memory
-from domain.rnn_model import init_params
+from domain.rnn_model import initialize_rnn_parameters
 from domain.training import AdagradMemory, Gradients
 
 
@@ -18,7 +18,7 @@ def _ones_gradients(params):
 
 
 def test_adagrad_moves_parameters_against_the_gradient():
-    params = init_params(vocab_size=4, hidden_size=3, seed=2)
+    params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=2)
     memory = zero_memory(params, AdagradMemory)
     grads = _ones_gradients(params)
 
@@ -29,7 +29,7 @@ def test_adagrad_moves_parameters_against_the_gradient():
 
 
 def test_adagrad_update_never_mutates_its_inputs():
-    params = init_params(vocab_size=4, hidden_size=3, seed=3)
+    params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=3)
     memory = zero_memory(params, AdagradMemory)
     original_Wxh, original_memory = params.Wxh.copy(), memory.mWxh.copy()
     grads = _ones_gradients(params)
@@ -43,7 +43,7 @@ def test_adagrad_update_never_mutates_its_inputs():
 def test_larger_accumulated_memory_shrinks_the_effective_step():
     """The whole point of Adagrad: a parameter that has already seen large
     gradients gets a smaller effective learning rate than a fresh one."""
-    params = init_params(vocab_size=4, hidden_size=3, seed=4)
+    params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=4)
     grads = _ones_gradients(params)
     fresh_memory = zero_memory(params, AdagradMemory)
     warmed_memory = AdagradMemory(

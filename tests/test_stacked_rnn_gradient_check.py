@@ -1,7 +1,7 @@
 """Same technique as test_gradient_check.py, applied across every layer of
 a stacked RNN: perturb each parameter matrix by a tiny epsilon and check
-the resulting change in loss against stacked_bptt's analytic gradient.
-This is what makes stacked_bptt's "hand gradients down through the stack,
+the resulting change in loss against stacked_backpropagate_through_time's analytic gradient.
+This is what makes stacked_backpropagate_through_time's "hand gradients down through the stack,
 layer by layer" derivation (see domain/stacked_training.py's docstring)
 trustworthy rather than merely plausible.
 
@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 
 from domain.rnn_model import cross_entropy_loss
-from domain.stacked_rnn import init_stacked_params, stacked_forward_sequence
-from domain.stacked_training import stacked_bptt
+from domain.stacked_rnn import initialize_stacked_rnn_parameters, stacked_forward_sequence
+from domain.stacked_training import stacked_backpropagate_through_time
 from domain.vocabulary import build_vocabulary, encode, one_hot
 
 HIDDEN_SIZES = (5, 4)
@@ -57,14 +57,14 @@ def _assert_matches_numerical_gradient(param_matrix, analytic_grad, params, inpu
 @pytest.mark.parametrize("field", ["Wxh", "Whh", "bh"])
 def test_layer_gradients_match_numerical_gradients(layer_index, field):
     vocab = build_vocabulary("hello")
-    params = init_stacked_params(vocab.size, HIDDEN_SIZES, seed=1)
+    params = initialize_stacked_rnn_parameters(vocab.size, HIDDEN_SIZES, seed=1)
     text_indices = encode(vocab, "hello")
     inputs = [one_hot(vocab, i) for i in text_indices[:-1]]
     targets = text_indices[1:]
     h0s = [np.zeros((size, 1)) for size in HIDDEN_SIZES]
 
     hs_by_layer, _, ps = stacked_forward_sequence(params, inputs, h0s)
-    grads = stacked_bptt(params, inputs, targets, hs_by_layer, ps)
+    grads = stacked_backpropagate_through_time(params, inputs, targets, hs_by_layer, ps)
 
     param_matrix = getattr(params.layers[layer_index], field)
     analytic_grad = getattr(grads.layers[layer_index], f"d{field}")
@@ -74,14 +74,14 @@ def test_layer_gradients_match_numerical_gradients(layer_index, field):
 @pytest.mark.parametrize("field", ["Why", "by"])
 def test_output_projection_gradients_match_numerical_gradients(field):
     vocab = build_vocabulary("hello")
-    params = init_stacked_params(vocab.size, HIDDEN_SIZES, seed=1)
+    params = initialize_stacked_rnn_parameters(vocab.size, HIDDEN_SIZES, seed=1)
     text_indices = encode(vocab, "hello")
     inputs = [one_hot(vocab, i) for i in text_indices[:-1]]
     targets = text_indices[1:]
     h0s = [np.zeros((size, 1)) for size in HIDDEN_SIZES]
 
     hs_by_layer, _, ps = stacked_forward_sequence(params, inputs, h0s)
-    grads = stacked_bptt(params, inputs, targets, hs_by_layer, ps)
+    grads = stacked_backpropagate_through_time(params, inputs, targets, hs_by_layer, ps)
 
     param_matrix = getattr(params, field)
     analytic_grad = getattr(grads, f"d{field}")

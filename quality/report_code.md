@@ -61,7 +61,7 @@ flowchart LR
 
 One vanilla-RNN training batch follows this sequence. `TrainerState` is
 replaced after each batch; domain operations return new values rather than
-mutating their inputs. `bptt` also returns the gradient with respect to the
+mutating their inputs. `backpropagate_through_time` also returns the gradient with respect to the
 initial hidden state, which ordinary truncated training ignores but the
 vanishing-gradient test measures.
 
@@ -75,7 +75,7 @@ sequenceDiagram
     Model-->>App: hidden states and probabilities
     App->>Model: cross_entropy_loss(probabilities, targets)
     Model-->>App: loss
-    App->>Learn: bptt(params, inputs, targets, states, probabilities)
+    App->>Learn: backpropagate_through_time(params, inputs, targets, states, probabilities)
     Learn-->>App: Gradients and initial-state gradient
     App->>Opt: clip_gradients(gradients)
     Opt-->>App: bounded Gradients

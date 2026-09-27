@@ -8,7 +8,7 @@ step of a 20-step sequence (as if some future loss depended only on
 getting that last character right), backpropagate purely through the
 recurrence with no local per-step loss in the way at any earlier step, and
 compare how much of that gradient survives all the way back to the *first*
-time step. That's exactly what bptt()'s/lstm_bptt()'s `dh0` return value
+time step. That's exactly what backpropagate_through_time()'s/lstm_backpropagate_through_time()'s `dh0` return value
 is -- see test_gradient_check.py for its own numerical check, which this
 test's conclusions depend on.
 
@@ -20,10 +20,10 @@ mechanism the article is pointing at, and it shows up in a single forward
 """
 import numpy as np
 
-from domain.lstm_model import init_lstm_params, lstm_forward_sequence
-from domain.lstm_training import lstm_bptt
-from domain.rnn_model import forward_sequence, init_params
-from domain.training import bptt as rnn_bptt
+from domain.lstm_model import initialize_lstm_parameters, lstm_forward_sequence
+from domain.lstm_training import lstm_backpropagate_through_time
+from domain.rnn_model import forward_sequence, initialize_rnn_parameters
+from domain.training import backpropagate_through_time as rnn_backpropagate_through_time
 from domain.vocabulary import build_vocabulary, one_hot
 
 SEQUENCE_LENGTH = 20
@@ -39,7 +39,7 @@ def _one_hot_vector(index: int, size: int) -> np.ndarray:
 def _sequence_with_loss_only_at_the_last_step(vocab, rng):
     """Build (inputs, targets, ps) where `ps` is rigged to be a *perfect*
     prediction at every step except the last -- so the per-step output
-    gradient (softmax - one_hot(target)) that bptt/lstm_bptt compute is
+    gradient (softmax - one_hot(target)) that backpropagate_through_time/lstm_backpropagate_through_time compute is
     exactly zero everywhere except at the final position. Only a loss on
     the very last character puts any gradient into this backward pass."""
     input_indices = rng.integers(0, vocab.size, size=SEQUENCE_LENGTH)
@@ -59,13 +59,13 @@ def test_lstm_carries_gradient_back_through_far_more_steps_than_vanilla_rnn():
     h0 = np.zeros((HIDDEN_SIZE, 1))
     c0 = np.zeros((HIDDEN_SIZE, 1))
 
-    rnn_params = init_params(vocab.size, HIDDEN_SIZE, seed=3)
+    rnn_params = initialize_rnn_parameters(vocab.size, HIDDEN_SIZE, seed=3)
     rnn_hs, _, _ = forward_sequence(rnn_params, inputs, h0)
-    _, rnn_dh0 = rnn_bptt(rnn_params, inputs, targets, rnn_hs, ps)
+    _, rnn_dh0 = rnn_backpropagate_through_time(rnn_params, inputs, targets, rnn_hs, ps)
 
-    lstm_params = init_lstm_params(vocab.size, HIDDEN_SIZE, seed=3)
+    lstm_params = initialize_lstm_parameters(vocab.size, HIDDEN_SIZE, seed=3)
     lstm_hs, lstm_cs, _, _ = lstm_forward_sequence(lstm_params, inputs, h0, c0)
-    _, lstm_dh0, _ = lstm_bptt(lstm_params, inputs, targets, lstm_hs, lstm_cs, ps)
+    _, lstm_dh0, _ = lstm_backpropagate_through_time(lstm_params, inputs, targets, lstm_hs, lstm_cs, ps)
 
     rnn_gradient_at_step_0 = np.linalg.norm(rnn_dh0)
     lstm_gradient_at_step_0 = np.linalg.norm(lstm_dh0)
