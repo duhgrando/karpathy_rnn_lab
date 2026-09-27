@@ -7,7 +7,7 @@ a new TrainerState that gets threaded into the next one.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Iterator, Tuple
+from typing import Tuple
 
 import numpy as np
 
@@ -21,6 +21,7 @@ from domain.optimization import adagrad_update, clip_gradients, zero_memory
 from domain.sampling import sample as sample_from_model  # re-exported for convenience
 from domain.training import AdagradMemory, backpropagate_through_time
 from domain.vocabulary import Vocabulary, encode, one_hot
+from application.training_utils import make_character_batches as _make_batches
 
 __all__ = [
     "TrainingConfig",
@@ -62,16 +63,6 @@ class TrainerState:
     hidden: np.ndarray
     smooth_loss: float
     iteration: int
-
-
-def _make_batches(
-    indices: Tuple[int, ...], seq_length: int
-) -> Iterator[Tuple[Tuple[int, ...], Tuple[int, ...]]]:
-    """Chunk the corpus into (input, target) windows of seq_length, each
-    target being the input shifted one character to the right."""
-    last_start = len(indices) - seq_length - 1
-    for start in range(0, max(last_start, 0), seq_length):
-        yield indices[start:start + seq_length], indices[start + 1:start + seq_length + 1]
 
 
 def _run_batch(

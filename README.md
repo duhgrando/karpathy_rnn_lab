@@ -29,10 +29,11 @@ see "On char-rnn" below.
     (see "One optimizer, two cell types" below); the stack reuses its
     lower-level `adagrad_step` directly, since a stack's parameters are
     nested rather than a flat dataclass
-- **Application (`application/train_service.py`)** — loops over batches and
-  epochs, threads an immutable `TrainerState` through the domain functions,
-  and returns final parameters with immutable per-batch snapshots in a
-  `TrainingResult` (vanilla-RNN training only, for now — see "What's not here").
+- **Application (`application/`)** — `train_service.py`,
+  `lstm_train_service.py`, and `stacked_train_service.py` loop over batches
+  and epochs for the vanilla RNN, LSTM, and stacked vanilla RNN respectively.
+  Each returns final parameters with per-batch snapshots; the shared
+  character-window batching helper lives in `training_utils.py`.
 - **Infrastructure (`infrastructure/corpus.py`)** — where training text
   comes from (a file, or a small built-in default). The domain layer never
   knows or cares.
@@ -79,7 +80,7 @@ python quality/crap.py
 
 > The CRAP check analyzes `domain/`, `application/`, and `tests/`; it excludes
 > `infrastructure/` and the quality tooling itself. The latest full run passed
-> all 135 tests and kept every analyzed function below the `5.0` threshold.
+> all 157 tests and kept every analyzed function below the `5.0` threshold.
 
 ## Test file ↔ article section map
 
@@ -92,8 +93,10 @@ python quality/crap.py
 | `test_gradient_clipping.py` | (reference implementation, not named in the prose) | gradients get bounded so one bad batch can't blow up training |
 | `test_adagrad_update.py` | *"per-parameter adaptive learning rate methods"* | Adagrad moves parameters against the gradient; a parameter that already saw big gradients gets a smaller effective step |
 | `test_optimization.py` | (design property, not article prose) | `clip_gradients`/`zero_memory`/`adagrad_update` work identically for the RNN's and the LSTM's dataclasses — proof the "one optimizer" design holds |
-| `test_sampling.py` | *"At test time ... we sample ... and feed it right back in"* + *Temperature* | sampling is reproducible under a fixed RNG seed; a synthetic peaked distribution sharpens toward the favorite at low temperature and flattens above 1 |
+| `test_sampling.py` | *"At test time ... we sample ... and feed it right back in"* + *Temperature* | RNN, LSTM, and stacked-RNN sampling is reproducible under a fixed RNG seed; a synthetic peaked distribution sharpens toward the favorite at low temperature and flattens above 1 |
 | `test_training_evolution_e2e.py` | *The evolution of samples while training* + the post's central claim | loss on a fixed window falls by >5x after training; a low-temperature sample from the trained model reproduces whole words it was never told about explicitly |
+| `test_lstm_training_e2e.py` | *Getting fancy* | LSTM training lowers fixed-window loss, returns per-batch snapshots, and preserves the seeded initial parameters for a zero-epoch run |
+| `test_stacked_rnn_training_e2e.py` | *Going deep* | stacked-RNN training lowers fixed-window loss, returns per-batch snapshots, and preserves the seeded initial parameters for a zero-epoch run |
 | `test_lstm_forward_pass.py` | *Getting fancy* | the four gates squash into their expected ranges; the forget-gate-bias-1 trick keeps the cell "remembering" by default; the cell state genuinely blends forget/input contributions |
 | `test_lstm_gradient_check.py` | *Getting fancy* | a numerical gradient check on all 14 of the LSTM's weight matrices, plus its `dh0`/`dc0` return values |
 | `test_vanishing_gradient_comparison.py` | *"...owing to its more powerful update equation and some appealing backpropagation dynamics"* | the actual mechanism: seed a gradient at the *last* step of a 20-step sequence and measure how much survives back to the *first* — the vanilla RNN's has vanished (~1e-30); the LSTM's hasn't (~1e-7) |
@@ -123,13 +126,6 @@ same pure/DDD/gradient-checked style as everything else here.
 
 ## What's not here (scope, deliberately)
 
-- **Training/sampling for the LSTM and the stack.** Both are fully
-  forward-pass-and-gradient-checked (correctness is proven), but
-  `application/train_service.py` only wires up the vanilla RNN's training
-  loop. Adding an LSTM- or stack-flavored `train()` is mostly plumbing at
-  this point — swap in `lstm_forward_sequence`/`lstm_backpropagate_through_time` or
-  `stacked_forward_sequence`/`stacked_backpropagate_through_time` and the matching `*Memory`
-  type — but wasn't done here to keep this round's scope bounded.
 - **Stacking LSTM cells**, dropout between layers, and minibatching —
   all real char-rnn features, all compose the same way conceptually, none
   implemented here.

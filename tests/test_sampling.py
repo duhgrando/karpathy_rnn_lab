@@ -2,8 +2,10 @@
 back in' and § 'Temperature'."""
 import numpy as np
 
+from domain.lstm_model import initialize_lstm_parameters
 from domain.rnn_model import initialize_rnn_parameters
-from domain.sampling import _temperature_scaled, sample
+from domain.sampling import _temperature_scaled, sample, sample_lstm, sample_stacked_rnn
+from domain.stacked_rnn import initialize_stacked_rnn_parameters
 from domain.vocabulary import build_vocabulary
 
 
@@ -30,6 +32,32 @@ def test_sample_is_reproducible_given_the_same_rng_seed():
     second = sample(params, vocab, h0, 0, 15, 1.0, seed=42)
 
     assert first == second
+
+
+def test_lstm_sample_generates_valid_indices_and_is_reproducible():
+    vocab = build_vocabulary("helo")
+    params = initialize_lstm_parameters(vocab.size, hidden_size=8, seed=4)
+    h0, c0 = np.zeros((8, 1)), np.zeros((8, 1))
+
+    first = sample_lstm(params, vocab, h0, c0, 0, 20, 1.0, seed=42)
+    second = sample_lstm(params, vocab, h0, c0, 0, 20, 1.0, seed=42)
+
+    assert first == second
+    assert len(first) == 20
+    assert all(0 <= index < vocab.size for index in first)
+
+
+def test_stacked_rnn_sample_generates_valid_indices_and_is_reproducible():
+    vocab = build_vocabulary("helo")
+    params = initialize_stacked_rnn_parameters(vocab.size, (5, 3), seed=4)
+    h0s = (np.zeros((5, 1)), np.zeros((3, 1)))
+
+    first = sample_stacked_rnn(params, vocab, h0s, 0, 20, 1.0, seed=42)
+    second = sample_stacked_rnn(params, vocab, h0s, 0, 20, 1.0, seed=42)
+
+    assert first == second
+    assert len(first) == 20
+    assert all(0 <= index < vocab.size for index in first)
 
 
 def test_temperature_near_zero_concentrates_almost_all_mass_on_the_favorite():

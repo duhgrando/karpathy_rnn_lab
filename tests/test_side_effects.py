@@ -22,6 +22,19 @@ from application.train_service import (
     _run_epoch,
     train,
 )
+from application.lstm_train_service import (
+    LSTMTrainerState,
+    _run_batch as _run_lstm_batch,
+    _run_epoch as _run_lstm_epoch,
+    train_lstm,
+)
+from application.stacked_train_service import (
+    StackedTrainerState,
+    StackedTrainingConfig,
+    _run_batch as _run_stacked_batch,
+    _run_epoch as _run_stacked_epoch,
+    train_stacked_rnn,
+)
 from domain.lstm_model import (
     compute_gates,
     initialize_lstm_parameters,
@@ -38,7 +51,16 @@ from domain.rnn_model import (
     initialize_rnn_parameters,
     softmax,
 )
-from domain.sampling import _temperature_scaled, sample
+from domain.sampling import (
+    _advance_lstm,
+    _advance_rnn,
+    _advance_stacked_rnn,
+    _sample,
+    _temperature_scaled,
+    sample,
+    sample_lstm,
+    sample_stacked_rnn,
+)
 from domain.stacked_rnn import (
     _append_layer_states,
     initialize_stacked_rnn_parameters,
@@ -318,13 +340,33 @@ def _optimization_specs(rnn, lstm):
     )
 
 
-def _sampling_specs(sequence, rnn):
+def _sampling_specs(sequence, rnn, lstm, stacked):
+    advance_rnn = lambda state, input_vector: _advance_rnn(rnn.params, state, input_vector)
+    advance_lstm = lambda state, input_vector: _advance_lstm(lstm.params, state, input_vector)
+    advance_stacked = lambda state, input_vector: _advance_stacked_rnn(
+        stacked.params, state, input_vector
+    )
     return (
         _spec("sampling.temperature_scaled", _temperature_scaled, rnn.probabilities[0], 0.5),
+        _spec("sampling.advance_rnn", _advance_rnn, rnn.params, rnn.initial_hidden, sequence.inputs[0]),
+        _spec("sampling.advance_lstm", _advance_lstm, lstm.params, (rnn.initial_hidden, lstm.initial_cell), sequence.inputs[0]),
+        _spec("sampling.advance_stacked_rnn", _advance_stacked_rnn, stacked.params, stacked.initial_hidden_states, sequence.inputs[0]),
+        _spec("sampling.sample_loop", _sample, sequence.vocabulary, rnn.initial_hidden, sequence.character_indices[0], 4, 1.0, 5, advance_rnn),
         _spec(
             "sampling.sample", sample, rnn.params, sequence.vocabulary, rnn.initial_hidden,
             sequence.character_indices[0], 4, 1.0, 5,
         ),
+        _spec(
+            "sampling.sample_lstm", sample_lstm, lstm.params, sequence.vocabulary,
+            rnn.initial_hidden, lstm.initial_cell, sequence.character_indices[0], 4, 1.0, 5,
+        ),
+        _spec(
+            "sampling.sample_stacked_rnn", sample_stacked_rnn, stacked.params,
+            sequence.vocabulary, stacked.initial_hidden_states, sequence.character_indices[0],
+            4, 1.0, 5,
+        ),
+        _spec("sampling.sample_loop_lstm", _sample, sequence.vocabulary, (rnn.initial_hidden, lstm.initial_cell), sequence.character_indices[0], 4, 1.0, 5, advance_lstm),
+        _spec("sampling.sample_loop_stacked_rnn", _sample, sequence.vocabulary, stacked.initial_hidden_states, sequence.character_indices[0], 4, 1.0, 5, advance_stacked),
     )
 
 
@@ -361,11 +403,21 @@ def _stacked_training_specs(sequence, case):
     )
 
 
-def _application_specs(sequence, rnn):
+def _application_specs(sequence, rnn, lstm, stacked):
     config = TrainingConfig(hidden_size=3, seq_length=2, seed=4)
+    stacked_config = StackedTrainingConfig(hidden_sizes=(3, 2), seq_length=2, seed=4)
     trainer_state = TrainerState(
         params=rnn.params, memory=rnn.memory, hidden=rnn.initial_hidden.copy(),
         smooth_loss=1.0, iteration=0,
+    )
+    lstm_state = LSTMTrainerState(
+        params=lstm.params, memory=lstm.memory,
+        hidden=rnn.initial_hidden.copy(), cell=lstm.initial_cell.copy(),
+        smooth_loss=1.0, iteration=0,
+    )
+    stacked_state = StackedTrainerState(
+        params=stacked.params, memory=stacked.memory,
+        hidden=stacked.initial_hidden_states, smooth_loss=1.0, iteration=0,
     )
     indices = sequence.character_indices
     return (
@@ -373,6 +425,12 @@ def _application_specs(sequence, rnn):
         _spec("application.run_batch", _run_batch, sequence.vocabulary, config, (indices[:2], indices[1:3]), trainer_state),
         _spec("application.run_epoch", _run_epoch, sequence.vocabulary, config, indices, trainer_state),
         _spec("application.train", train, "abba", sequence.vocabulary, config, 1),
+        _spec("application.lstm_run_batch", _run_lstm_batch, sequence.vocabulary, config, (indices[:2], indices[1:3]), lstm_state),
+        _spec("application.lstm_run_epoch", _run_lstm_epoch, sequence.vocabulary, config, indices, lstm_state),
+        _spec("application.train_lstm", train_lstm, "abba", sequence.vocabulary, config, 1),
+        _spec("application.stacked_run_batch", _run_stacked_batch, sequence.vocabulary, stacked_config, (indices[:2], indices[1:3]), stacked_state),
+        _spec("application.stacked_run_epoch", _run_stacked_epoch, sequence.vocabulary, stacked_config, indices, stacked_state),
+        _spec("application.train_stacked_rnn", train_stacked_rnn, "abba", sequence.vocabulary, stacked_config, 1),
     )
 
 
@@ -386,10 +444,10 @@ def _function_specs():
         *_rnn_specs(sequence, rnn),
         *_lstm_specs(sequence, rnn, lstm),
         *_optimization_specs(rnn, lstm),
-        *_sampling_specs(sequence, rnn),
+        *_sampling_specs(sequence, rnn, lstm, stacked),
         *_stacked_specs(sequence, stacked),
         *_stacked_training_specs(sequence, stacked),
-        *_application_specs(sequence, rnn),
+        *_application_specs(sequence, rnn, lstm, stacked),
     )
 
 
