@@ -15,6 +15,7 @@ import numpy as np
 from domain.lstm_model import LSTMParams, lstm_step
 from domain.rnn_model import RNNParams, forward_step, softmax
 from domain.stacked_rnn import StackedRNNParams, stacked_step
+from domain.stacked_lstm import StackedLSTMParams, stacked_lstm_step
 from domain.vocabulary import Vocabulary, one_hot
 
 State = TypeVar("State")
@@ -116,4 +117,29 @@ def sample_stacked_rnn(
     return _sample(
         vocab, tuple(h0s), seed_index, length, temperature, seed,
         lambda state, x: _advance_stacked_rnn(params, state, x),
+    )
+
+
+def _advance_stacked_lstm(params: StackedLSTMParams, state, x: np.ndarray):
+    hidden, cell = state
+    next_hidden, next_cell, _, probabilities = stacked_lstm_step(
+        params, x, hidden, cell
+    )
+    return (next_hidden, next_cell), probabilities
+
+
+def sample_stacked_lstm(
+    params: StackedLSTMParams,
+    vocab: Vocabulary,
+    h0s: Sequence[np.ndarray],
+    c0s: Sequence[np.ndarray],
+    seed_index: int,
+    length: int,
+    temperature: float,
+    seed: int,
+) -> Tuple[int, ...]:
+    """Generate characters autoregressively from stacked LSTM layers."""
+    return _sample(
+        vocab, (tuple(h0s), tuple(c0s)), seed_index, length, temperature, seed,
+        lambda state, x: _advance_stacked_lstm(params, state, x),
     )

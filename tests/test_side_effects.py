@@ -35,6 +35,20 @@ from application.stacked_train_service import (
     _run_epoch as _run_stacked_epoch,
     train_stacked_rnn,
 )
+from application.stacked_lstm_train_service import (
+    StackedLSTMTrainerState,
+    StackedLSTMTrainingConfig,
+    _aligned_window,
+    _make_minibatches,
+    _one_hot_batch,
+    _run_batch as _run_stacked_lstm_batch,
+    _run_epoch as _run_stacked_lstm_epoch,
+    _split_streams,
+    _validate_batch_config,
+    _validate_run_config,
+    _window_timestep,
+    train_stacked_lstm,
+)
 from domain.lstm_model import (
     compute_gates,
     initialize_lstm_parameters,
@@ -52,6 +66,7 @@ from domain.rnn_model import (
     softmax,
 )
 from domain.sampling import (
+    _advance_stacked_lstm,
     _advance_lstm,
     _advance_rnn,
     _advance_stacked_rnn,
@@ -59,6 +74,7 @@ from domain.sampling import (
     _temperature_scaled,
     sample,
     sample_lstm,
+    sample_stacked_lstm,
     sample_stacked_rnn,
 )
 from domain.stacked_rnn import (
@@ -74,6 +90,38 @@ from domain.stacked_training import (
     stacked_adagrad_update,
     stacked_backpropagate_through_time,
     zero_stacked_memory,
+)
+from domain.stacked_lstm import (
+    _append_timestep,
+    _forward_layer,
+    _forward_timestep,
+    _freeze_histories,
+    _initialize_histories,
+    _inter_layer_input,
+    _last_states,
+    _softmax_columns,
+    _timestep_dropout_seed,
+    _validate_forward_inputs,
+    _validate_hidden_sizes,
+    compute_layer_gates,
+    initialize_stacked_lstm_parameters,
+    stacked_lstm_forward_sequence,
+    stacked_lstm_step,
+)
+from domain.stacked_lstm_training import (
+    StackedLSTMGradients,
+    _backpropagate_layer_step,
+    _initialize_gradient_accumulators,
+    _layer_input_for_backward,
+    _layer_step_gradients,
+    _output_step_gradients,
+    _target_matrix,
+    _zero_layer_gradients,
+    clip_stacked_lstm_gradients,
+    stacked_lstm_adagrad_update,
+    stacked_lstm_backpropagate_through_time,
+    stacked_lstm_cross_entropy_loss,
+    zero_stacked_lstm_memory,
 )
 from domain.training import AdagradMemory, backpropagate_through_time
 from domain.vocabulary import (
@@ -138,6 +186,21 @@ class StackedCase:
     memory: object
     layer_gradients: list
     next_hidden_gradients: list
+
+
+@dataclass(frozen=True)
+class StackedLSTMCase:
+    params: object
+    initial_hidden_states: tuple[np.ndarray, ...]
+    initial_cell_states: tuple[np.ndarray, ...]
+    inputs: tuple[np.ndarray, ...]
+    targets: np.ndarray
+    hidden_states: tuple
+    cell_states: tuple
+    probabilities: tuple
+    dropout_masks: tuple
+    gradients: object
+    memory: object
 
 
 def _source_modules():
@@ -279,6 +342,27 @@ def _stacked_case(sequence):
     )
 
 
+def _stacked_lstm_case(sequence):
+    params = initialize_stacked_lstm_parameters(
+        sequence.vocabulary.size, hidden_sizes=(3, 2), seed=6
+    )
+    initial_hidden_states = (np.zeros((3, 1)), np.zeros((2, 1)))
+    initial_cell_states = (np.zeros((3, 1)), np.zeros((2, 1)))
+    inputs = tuple(sequence.inputs)
+    targets = np.asarray(sequence.targets, dtype=np.intp)[:, np.newaxis]
+    hidden_states, cell_states, _, probabilities, dropout_masks = stacked_lstm_forward_sequence(
+        params, inputs, initial_hidden_states, initial_cell_states
+    )
+    gradients = stacked_lstm_backpropagate_through_time(
+        params, inputs, targets, hidden_states, cell_states, probabilities, dropout_masks
+    )
+    memory = zero_stacked_lstm_memory(params)
+    return StackedLSTMCase(
+        params, initial_hidden_states, initial_cell_states, inputs, targets,
+        hidden_states, cell_states, probabilities, dropout_masks, gradients, memory,
+    )
+
+
 def _spec(name, function, *arguments):
     return FunctionSpec(name, function, arguments, ())
 
@@ -340,17 +424,21 @@ def _optimization_specs(rnn, lstm):
     )
 
 
-def _sampling_specs(sequence, rnn, lstm, stacked):
+def _sampling_specs(sequence, rnn, lstm, stacked, stacked_lstm):
     advance_rnn = lambda state, input_vector: _advance_rnn(rnn.params, state, input_vector)
     advance_lstm = lambda state, input_vector: _advance_lstm(lstm.params, state, input_vector)
     advance_stacked = lambda state, input_vector: _advance_stacked_rnn(
         stacked.params, state, input_vector
+    )
+    advance_stacked_lstm = lambda state, input_vector: _advance_stacked_lstm(
+        stacked_lstm.params, state, input_vector
     )
     return (
         _spec("sampling.temperature_scaled", _temperature_scaled, rnn.probabilities[0], 0.5),
         _spec("sampling.advance_rnn", _advance_rnn, rnn.params, rnn.initial_hidden, sequence.inputs[0]),
         _spec("sampling.advance_lstm", _advance_lstm, lstm.params, (rnn.initial_hidden, lstm.initial_cell), sequence.inputs[0]),
         _spec("sampling.advance_stacked_rnn", _advance_stacked_rnn, stacked.params, stacked.initial_hidden_states, sequence.inputs[0]),
+        _spec("sampling.advance_stacked_lstm", _advance_stacked_lstm, stacked_lstm.params, (stacked_lstm.initial_hidden_states, stacked_lstm.initial_cell_states), sequence.inputs[0]),
         _spec("sampling.sample_loop", _sample, sequence.vocabulary, rnn.initial_hidden, sequence.character_indices[0], 4, 1.0, 5, advance_rnn),
         _spec(
             "sampling.sample", sample, rnn.params, sequence.vocabulary, rnn.initial_hidden,
@@ -365,8 +453,14 @@ def _sampling_specs(sequence, rnn, lstm, stacked):
             sequence.vocabulary, stacked.initial_hidden_states, sequence.character_indices[0],
             4, 1.0, 5,
         ),
+        _spec(
+            "sampling.sample_stacked_lstm", sample_stacked_lstm, stacked_lstm.params,
+            sequence.vocabulary, stacked_lstm.initial_hidden_states,
+            stacked_lstm.initial_cell_states, sequence.character_indices[0], 4, 1.0, 5,
+        ),
         _spec("sampling.sample_loop_lstm", _sample, sequence.vocabulary, (rnn.initial_hidden, lstm.initial_cell), sequence.character_indices[0], 4, 1.0, 5, advance_lstm),
         _spec("sampling.sample_loop_stacked_rnn", _sample, sequence.vocabulary, stacked.initial_hidden_states, sequence.character_indices[0], 4, 1.0, 5, advance_stacked),
+        _spec("sampling.sample_loop_stacked_lstm", _sample, sequence.vocabulary, (stacked_lstm.initial_hidden_states, stacked_lstm.initial_cell_states), sequence.character_indices[0], 4, 1.0, 5, advance_stacked_lstm),
     )
 
 
@@ -400,6 +494,118 @@ def _stacked_training_specs(sequence, case):
             "stacked_training.backpropagate_through_time", stacked_backpropagate_through_time,
             case.params, sequence.inputs, sequence.targets, case.hidden_states, case.probabilities,
         ),
+    )
+
+
+def _appended_state_arguments(case):
+    current_hidden = tuple(layer[1] for layer in case.hidden_states)
+    current_cell = tuple(layer[1] for layer in case.cell_states)
+    current_masks = tuple(connection[0] for connection in case.dropout_masks)
+    return current_hidden, current_cell, current_masks
+
+
+def _zero_layer_gradient_dict(layer):
+    return {
+        f"d{field.name}": np.zeros_like(getattr(layer, field.name))
+        for field in fields(layer)
+    }
+
+
+def _zero_layer_gradient_dicts(params):
+    return [_zero_layer_gradient_dict(layer) for layer in params.layers]
+
+
+def _backpropagate_layer_arguments(case):
+    hidden_gradients = [np.zeros_like(states[0]) for states in case.hidden_states]
+    cell_gradients = [np.zeros_like(states[0]) for states in case.cell_states]
+    layer_gradients = _zero_layer_gradient_dicts(case.params)
+    return hidden_gradients, cell_gradients, layer_gradients
+
+
+def _stacked_lstm_forward_specs(sequence, case):
+    first_layer = case.params.layers[0]
+    first_hidden = case.hidden_states[0]
+    first_cell = case.cell_states[0]
+    layer_input = case.inputs[0]
+    current_hidden, current_cell, current_masks = _appended_state_arguments(case)
+    return (
+        _spec("stacked_lstm.initialize_parameters", initialize_stacked_lstm_parameters, sequence.vocabulary.size, (3, 2), 6),
+        _spec("stacked_lstm.validate_hidden_sizes", _validate_hidden_sizes, (3, 2)),
+        _spec("stacked_lstm.validate_forward_inputs", _validate_forward_inputs, case.params, case.initial_hidden_states, case.initial_cell_states, 0.25),
+        _spec("stacked_lstm.compute_layer_gates", compute_layer_gates, first_layer, layer_input, first_hidden[0]),
+        _spec("stacked_lstm.forward_layer", _forward_layer, first_layer, layer_input, first_hidden[0], first_cell[0]),
+        _spec("stacked_lstm.inter_layer_input", _inter_layer_input, first_hidden[1], 0.5, True, 17),
+        _spec("stacked_lstm.forward_timestep", _forward_timestep, case.params, layer_input, case.initial_hidden_states, case.initial_cell_states, 0.5, True, 13),
+        _spec("stacked_lstm.initialize_histories", _initialize_histories, case.params, case.initial_hidden_states, case.initial_cell_states),
+        _spec("stacked_lstm.append_timestep", _append_timestep, case.hidden_states, case.cell_states, case.dropout_masks, current_hidden, current_cell, current_masks),
+        _spec("stacked_lstm.freeze_histories", _freeze_histories, case.hidden_states, case.cell_states, case.dropout_masks),
+        _spec("stacked_lstm.last_states", _last_states, case.hidden_states),
+        _spec("stacked_lstm.timestep_dropout_seed", _timestep_dropout_seed, 17, 2, len(case.params.layers)),
+        _spec("stacked_lstm.softmax_columns", _softmax_columns, np.array([[1.0, 2.0], [2.0, 1.0]])),
+        _spec("stacked_lstm.step", stacked_lstm_step, case.params, layer_input, case.initial_hidden_states, case.initial_cell_states),
+        _spec("stacked_lstm.forward_sequence", stacked_lstm_forward_sequence, case.params, case.inputs, case.initial_hidden_states, case.initial_cell_states),
+        _spec("stacked_lstm.forward_sequence_dropout", stacked_lstm_forward_sequence, case.params, case.inputs, case.initial_hidden_states, case.initial_cell_states, 0.5, True, 7),
+    )
+
+
+def _stacked_lstm_training_specs(sequence, case):
+    first_layer = case.params.layers[0]
+    first_hidden = case.hidden_states[0]
+    first_cell = case.cell_states[0]
+    layer_input = case.inputs[0]
+    hidden_gradients, cell_gradients, layer_gradients = _backpropagate_layer_arguments(case)
+    return (
+        _spec("stacked_lstm.initialize_gradient_accumulators", _initialize_gradient_accumulators, case.params, case.hidden_states),
+        _spec("stacked_lstm.zero_layer_gradients", _zero_layer_gradients, first_layer),
+        _spec("stacked_lstm.output_step_gradients", _output_step_gradients, case.params, case.probabilities[0], case.targets[0], case.hidden_states[-1][1], 1.0),
+        _spec("stacked_lstm.layer_step_gradients", _layer_step_gradients, first_layer, layer_input, first_hidden[0], first_cell[0], first_cell[1], np.ones_like(first_hidden[1]), np.zeros_like(first_cell[0])),
+        _spec("stacked_lstm.layer_input_for_backward", _layer_input_for_backward, case.inputs, case.hidden_states, case.dropout_masks, 1, 0),
+        _spec("stacked_lstm.backpropagate_layer_step", _backpropagate_layer_step, case.params, 1, case.hidden_states[0][1], case.hidden_states, case.cell_states, case.dropout_masks, 0, np.ones_like(case.hidden_states[-1][1]), hidden_gradients, cell_gradients, layer_gradients),
+        _spec("stacked_lstm.backpropagate_through_time", stacked_lstm_backpropagate_through_time, case.params, case.inputs, case.targets, case.hidden_states, case.cell_states, case.probabilities, case.dropout_masks),
+        _spec("stacked_lstm.target_matrix", _target_matrix, case.targets, len(case.inputs), 1),
+        _spec("stacked_lstm.cross_entropy_loss", stacked_lstm_cross_entropy_loss, case.probabilities, case.targets),
+        _spec("stacked_lstm.zero_memory", zero_stacked_lstm_memory, case.params),
+        _spec("stacked_lstm.clip_gradients", clip_stacked_lstm_gradients, case.gradients),
+        _spec("stacked_lstm.adagrad_update", stacked_lstm_adagrad_update, case.params, case.gradients, case.memory),
+    )
+
+
+def _stacked_lstm_specs(sequence, case):
+    return (
+        *_stacked_lstm_forward_specs(sequence, case),
+        *_stacked_lstm_training_specs(sequence, case),
+    )
+
+
+def _stacked_lstm_application_specs(sequence, case):
+    config = StackedLSTMTrainingConfig(
+        hidden_sizes=(3, 2), seq_length=2, seed=4, batch_size=1
+    )
+    state = StackedLSTMTrainerState(
+        params=case.params,
+        memory=case.memory,
+        hidden=case.initial_hidden_states,
+        cell=case.initial_cell_states,
+        smooth_loss=1.0,
+        iteration=0,
+    )
+    indices = sequence.character_indices
+    streams = _split_streams(tuple(range(8)), batch_size=2, stream_length=4)
+    batch = (
+        ((indices[0],), (indices[1],)),
+        ((indices[1],), (indices[2],)),
+    )
+    return (
+        _spec("stacked_lstm_application.make_minibatches", _make_minibatches, indices, 2, 1),
+        _spec("stacked_lstm_application.split_streams", _split_streams, tuple(range(8)), 2, 4),
+        _spec("stacked_lstm_application.aligned_window", _aligned_window, streams, 0, 2),
+        _spec("stacked_lstm_application.window_timestep", _window_timestep, streams, 0, 0),
+        _spec("stacked_lstm_application.validate_batch_config", _validate_batch_config, config),
+        _spec("stacked_lstm_application.validate_run_config", _validate_run_config, config, 1),
+        _spec("stacked_lstm_application.one_hot_batch", _one_hot_batch, sequence.vocabulary, (indices[0],)),
+        _spec("stacked_lstm_application.run_batch", _run_stacked_lstm_batch, sequence.vocabulary, config, batch, state),
+        _spec("stacked_lstm_application.run_epoch", _run_stacked_lstm_epoch, sequence.vocabulary, config, indices, state),
+        _spec("stacked_lstm_application.train", train_stacked_lstm, "abba", sequence.vocabulary, config, 1),
     )
 
 
@@ -439,14 +645,17 @@ def _function_specs():
     rnn = _rnn_case(sequence)
     lstm = _lstm_case(sequence, rnn)
     stacked = _stacked_case(sequence)
+    stacked_lstm = _stacked_lstm_case(sequence)
     return (
         *_vocabulary_specs(sequence),
         *_rnn_specs(sequence, rnn),
         *_lstm_specs(sequence, rnn, lstm),
         *_optimization_specs(rnn, lstm),
-        *_sampling_specs(sequence, rnn, lstm, stacked),
+        *_sampling_specs(sequence, rnn, lstm, stacked, stacked_lstm),
         *_stacked_specs(sequence, stacked),
         *_stacked_training_specs(sequence, stacked),
+        *_stacked_lstm_specs(sequence, stacked_lstm),
+        *_stacked_lstm_application_specs(sequence, stacked_lstm),
         *_application_specs(sequence, rnn, lstm, stacked),
     )
 

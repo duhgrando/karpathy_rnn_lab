@@ -6,6 +6,14 @@ from domain.lstm_model import initialize_lstm_parameters
 from domain.rnn_model import initialize_rnn_parameters
 from domain.sampling import _temperature_scaled, sample, sample_lstm, sample_stacked_rnn
 from domain.stacked_rnn import initialize_stacked_rnn_parameters
+from domain.stacked_lstm import initialize_stacked_lstm_parameters
+from domain.sampling import (
+    _temperature_scaled,
+    sample,
+    sample_lstm,
+    sample_stacked_lstm,
+    sample_stacked_rnn,
+)
 from domain.vocabulary import build_vocabulary
 
 
@@ -54,6 +62,20 @@ def test_stacked_rnn_sample_generates_valid_indices_and_is_reproducible():
 
     first = sample_stacked_rnn(params, vocab, h0s, 0, 20, 1.0, seed=42)
     second = sample_stacked_rnn(params, vocab, h0s, 0, 20, 1.0, seed=42)
+
+    assert first == second
+    assert len(first) == 20
+    assert all(0 <= index < vocab.size for index in first)
+
+
+def test_stacked_lstm_sample_generates_valid_indices_and_is_reproducible():
+    vocab = build_vocabulary("helo")
+    params = initialize_stacked_lstm_parameters(vocab.size, (5, 3), seed=4)
+    h0s = (np.zeros((5, 1)), np.zeros((3, 1)))
+    c0s = (np.zeros((5, 1)), np.zeros((3, 1)))
+
+    first = sample_stacked_lstm(params, vocab, h0s, c0s, 0, 20, 1.0, seed=42)
+    second = sample_stacked_lstm(params, vocab, h0s, c0s, 0, 20, 1.0, seed=42)
 
     assert first == second
     assert len(first) == 20

@@ -24,16 +24,19 @@ see "On char-rnn" below.
   - `lstm_model.py` / `lstm_training.py` — the LSTM cell + its BPTT
   - `stacked_rnn.py` / `stacked_training.py` — N-layer stacking of vanilla
     RNN cells + its BPTT
+  - `stacked_lstm.py` / `stacked_lstm_training.py` — N-layer LSTM cells,
+    inter-layer dropout, minibatch forward/BPTT, and nested Adagrad state
   - `optimization.py` — gradient clipping and the Adagrad update, written
-    **once**, generically, and reused by both the vanilla RNN and the LSTM
-    (see "One optimizer, two cell types" below); the stack reuses its
-    lower-level `adagrad_step` directly, since a stack's parameters are
-    nested rather than a flat dataclass
+    **once**, generically, for the flat vanilla-RNN and LSTM dataclasses
+    (see "One optimizer, two cell types" below); both stacks reuse its
+    lower-level `adagrad_step` directly, since their parameters are nested
 - **Application (`application/`)** — `train_service.py`,
-  `lstm_train_service.py`, and `stacked_train_service.py` loop over batches
-  and epochs for the vanilla RNN, LSTM, and stacked vanilla RNN respectively.
-  Each returns final parameters with per-batch snapshots; the shared
-  character-window batching helper lives in `training_utils.py`.
+  `lstm_train_service.py`, `stacked_train_service.py`, and
+  `stacked_lstm_train_service.py` train the vanilla RNN, LSTM, stacked
+  vanilla RNN, and stacked LSTM respectively. The stacked-LSTM service
+  supports minibatches and optional inter-layer dropout; its cross-entropy
+  is averaged over target tokens. Each service returns final parameters
+  with per-batch snapshots.
 - **Infrastructure (`infrastructure/corpus.py`)** — where training text
   comes from (a file, or a small built-in default). The domain layer never
   knows or cares.
@@ -49,19 +52,19 @@ invisible to callers, who only ever get back a fresh `*Gradients` /
 `*Params` / `*Memory` value. Purity is a property of the function's
 boundary, not a ban on local bookkeeping.
 
-### One optimizer, two (three) cell types
+### One optimizer, two cell types
 
 `clip_gradients`, `zero_memory`, and `adagrad_update` in
 `domain/optimization.py` don't know or care whether a gradient came from
-the vanilla RNN or the LSTM — they work structurally, via
+the vanilla RNN or a single LSTM cell — they work structurally, via
 `dataclasses.fields()`, off one naming convention every cell type in this
 project follows: a params field `Wxh` has a gradient field `dWxh` and a
 memory field `mWxh`. `tests/test_optimization.py` exercises the same three
 functions against both `Gradients`/`AdagradMemory` (RNN) and
 `LSTMGradients`/`LSTMMemory` (LSTM) to prove that rather than just assert
-it. Only the chain rule itself (`backpropagate_through_time` vs.
-`lstm_backpropagate_through_time`) is cell-specific,
-because that genuinely differs.
+it. Stacks have nested parameter structures, so their optimizers traverse
+each layer and use the same lower-level `adagrad_step`. The chain rules
+remain cell-specific because they genuinely differ.
 
 ## Running it
 
@@ -80,7 +83,7 @@ python quality/crap.py
 
 > The CRAP check analyzes `domain/`, `application/`, and `tests/`; it excludes
 > `infrastructure/` and the quality tooling itself. The latest full run passed
-> all 157 tests and kept every analyzed function below the `5.0` threshold.
+> all 247 tests and kept every analyzed function below the `5.0` threshold.
 
 ## Test file ↔ article section map
 
@@ -93,7 +96,7 @@ python quality/crap.py
 | `test_gradient_clipping.py` | (reference implementation, not named in the prose) | gradients get bounded so one bad batch can't blow up training |
 | `test_adagrad_update.py` | *"per-parameter adaptive learning rate methods"* | Adagrad moves parameters against the gradient; a parameter that already saw big gradients gets a smaller effective step |
 | `test_optimization.py` | (design property, not article prose) | `clip_gradients`/`zero_memory`/`adagrad_update` work identically for the RNN's and the LSTM's dataclasses — proof the "one optimizer" design holds |
-| `test_sampling.py` | *"At test time ... we sample ... and feed it right back in"* + *Temperature* | RNN, LSTM, and stacked-RNN sampling is reproducible under a fixed RNG seed; a synthetic peaked distribution sharpens toward the favorite at low temperature and flattens above 1 |
+| `test_sampling.py` | *"At test time ... we sample ... and feed it right back in"* + *Temperature* | RNN, LSTM, stacked-RNN, and stacked-LSTM sampling is reproducible under a fixed RNG seed; a synthetic peaked distribution sharpens toward the favorite at low temperature and flattens above 1 |
 | `test_training_evolution_e2e.py` | *The evolution of samples while training* + the post's central claim | loss on a fixed window falls by >5x after training; a low-temperature sample from the trained model reproduces whole words it was never told about explicitly |
 | `test_lstm_training_e2e.py` | *Getting fancy* | LSTM training lowers fixed-window loss, returns per-batch snapshots, and preserves the seeded initial parameters for a zero-epoch run |
 | `test_stacked_rnn_training_e2e.py` | *Going deep* | stacked-RNN training lowers fixed-window loss, returns per-batch snapshots, and preserves the seeded initial parameters for a zero-epoch run |
@@ -103,6 +106,12 @@ python quality/crap.py
 | `test_stacked_rnn_forward_pass.py` | *Going deep* | `y1 = rnn1.step(x); y = rnn2.step(y1)` — layer shapes chain bottom-to-top correctly, and a deeper stack computes something genuinely different from a shallow one |
 | `test_stacked_rnn_gradient_check.py` | *Going deep* | a numerical gradient check across every layer's weights, confirming gradients propagate correctly both through time *and* through depth |
 | `test_stacked_rnn_optimizer.py` | (design property, not article prose) | clipping and Adagrad both walk every layer of the stack correctly |
+| `test_stacked_lstm_forward_pass.py` | *Getting fancy* + *Going deep* | stacked gate/state shapes are correct, probability columns normalize, and batched columns match independent single-example forwards |
+| `test_stacked_lstm_gradient_check.py` | *Getting fancy* + *Going deep* | central finite differences verify gradients through time and depth for every gate parameter in both layers and the output projection |
+| `test_stacked_lstm_optimizer.py` | (design property, not article prose) | zeroed memory, clipping, and Adagrad updates traverse every stacked-LSTM layer and the output projection |
+| `test_stacked_lstm_dropout.py` | *Going deep* | inter-layer masks are seeded and reproducible, inference disables dropout, and BPTT returns finite gradients with masks applied |
+| `test_stacked_lstm_batching.py` | *Going deep* | per-column probabilities normalize; mean token loss agrees with separate examples, including batch size one |
+| `test_stacked_lstm_batch_training.py` | *Going deep* | contiguous streams produce shifted targets, batched gradients pass finite differences, and seeded minibatch training lowers fixed-window loss |
 
 ## A note on the training corpus
 
@@ -126,9 +135,6 @@ same pure/DDD/gradient-checked style as everything else here.
 
 ## What's not here (scope, deliberately)
 
-- **Stacking LSTM cells**, dropout between layers, and minibatching —
-  all real char-rnn features, all compose the same way conceptually, none
-  implemented here.
 - **A trained-model demonstration of long-range memory** (e.g. a
   delayed-copy task) for the LSTM vs. vanilla RNN. `test_vanishing_gradient_comparison.py`
   measures the actual mechanism (gradient decay) directly and
