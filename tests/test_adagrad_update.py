@@ -2,8 +2,9 @@
 updates' -- Adagrad, as used in Karpathy's reference implementation."""
 import numpy as np
 
+from domain.optimization import adagrad_update, zero_memory
 from domain.rnn_model import init_params
-from domain.training import AdagradMemory, Gradients, adagrad_update, zero_memory
+from domain.training import AdagradMemory, Gradients
 
 
 def _ones_gradients(params):
@@ -18,7 +19,7 @@ def _ones_gradients(params):
 
 def test_adagrad_moves_parameters_against_the_gradient():
     params = init_params(vocab_size=4, hidden_size=3, seed=2)
-    memory = zero_memory(params)
+    memory = zero_memory(params, AdagradMemory)
     grads = _ones_gradients(params)
 
     new_params, new_memory = adagrad_update(params, grads, memory, learning_rate=0.5)
@@ -29,7 +30,7 @@ def test_adagrad_moves_parameters_against_the_gradient():
 
 def test_adagrad_update_never_mutates_its_inputs():
     params = init_params(vocab_size=4, hidden_size=3, seed=3)
-    memory = zero_memory(params)
+    memory = zero_memory(params, AdagradMemory)
     original_Wxh, original_memory = params.Wxh.copy(), memory.mWxh.copy()
     grads = _ones_gradients(params)
 
@@ -44,7 +45,7 @@ def test_larger_accumulated_memory_shrinks_the_effective_step():
     gradients gets a smaller effective learning rate than a fresh one."""
     params = init_params(vocab_size=4, hidden_size=3, seed=4)
     grads = _ones_gradients(params)
-    fresh_memory = zero_memory(params)
+    fresh_memory = zero_memory(params, AdagradMemory)
     warmed_memory = AdagradMemory(
         mWxh=np.full_like(params.Wxh, 100.0),
         mWhh=np.zeros_like(params.Whh),

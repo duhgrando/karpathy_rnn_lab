@@ -5,7 +5,8 @@ batch from throwing the parameters somewhere the tanh nonlinearity can't
 recover from."""
 import numpy as np
 
-from domain.training import Gradients, clip_gradients
+from domain.optimization import clip_gradients
+from domain.training import Gradients
 
 
 def _extreme_gradients():

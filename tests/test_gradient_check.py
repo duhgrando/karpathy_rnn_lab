@@ -37,7 +37,7 @@ def test_analytic_gradient_matches_numerical_gradient(field):
     h0 = np.zeros((6, 1))
 
     hs, _, ps = forward_sequence(params, inputs, h0)
-    grads = bptt(params, inputs, targets, hs, ps)
+    grads, _ = bptt(params, inputs, targets, hs, ps)
     analytic = getattr(grads, f"d{field}")
     param_matrix = getattr(params, field)
 
@@ -62,6 +62,40 @@ def test_analytic_gradient_matches_numerical_gradient(field):
         analytic_gradient = analytic.flat[position]
         relative_error = abs(numerical_gradient - analytic_gradient) / max(
             1e-8, abs(numerical_gradient) + abs(analytic_gradient)
+        )
+
+        assert relative_error < 1e-3
+
+
+def test_dh0_matches_numerical_gradient_of_loss_with_respect_to_the_initial_state():
+    """bptt's second return value, dh0 = dL/dh0, isn't used by ordinary
+    training (truncated BPTT treats the carried-over hidden state as a
+    constant) -- but tests/test_vanishing_gradient_comparison.py relies on
+    it to measure gradient decay, so it needs its own numerical check
+    before it's trusted for that."""
+    vocab = build_vocabulary("hello")
+    params = init_params(vocab.size, hidden_size=6, seed=1)
+    text_indices = encode(vocab, "hello")
+    inputs = [one_hot(vocab, i) for i in text_indices[:-1]]
+    targets = text_indices[1:]
+    h0 = np.zeros((6, 1))
+
+    hs, _, ps = forward_sequence(params, inputs, h0)
+    _, dh0 = bptt(params, inputs, targets, hs, ps)
+
+    epsilon = 1e-4
+    for row in range(h0.shape[0]):
+        perturbed_plus = h0.copy()
+        perturbed_plus[row, 0] += epsilon
+        loss_plus = _loss_for_params(params, inputs, targets, perturbed_plus)
+
+        perturbed_minus = h0.copy()
+        perturbed_minus[row, 0] -= epsilon
+        loss_minus = _loss_for_params(params, inputs, targets, perturbed_minus)
+
+        numerical_gradient = (loss_plus - loss_minus) / (2 * epsilon)
+        relative_error = abs(numerical_gradient - dh0[row, 0]) / max(
+            1e-8, abs(numerical_gradient) + abs(dh0[row, 0])
         )
 
         assert relative_error < 1e-3

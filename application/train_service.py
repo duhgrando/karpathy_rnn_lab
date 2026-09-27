@@ -18,14 +18,9 @@ from domain.rnn_model import (
     forward_sequence,
     init_params,
 )
+from domain.optimization import adagrad_update, clip_gradients, zero_memory
 from domain.sampling import sample as sample_from_model  # re-exported for convenience
-from domain.training import (
-    AdagradMemory,
-    adagrad_update,
-    bptt,
-    clip_gradients,
-    zero_memory,
-)
+from domain.training import AdagradMemory, bptt
 from domain.vocabulary import Vocabulary, encode, one_hot
 
 __all__ = [
@@ -83,7 +78,8 @@ def _run_batch(
 
     hs, _, ps = forward_sequence(state.params, inputs, state.hidden)
     loss = cross_entropy_loss(ps, target_ids)
-    grads = clip_gradients(bptt(state.params, inputs, target_ids, hs, ps))
+    grads, _ = bptt(state.params, inputs, target_ids, hs, ps)
+    grads = clip_gradients(grads)
     new_params, new_memory = adagrad_update(
         state.params, grads, state.memory, config.learning_rate
     )
@@ -130,7 +126,7 @@ def train(
     params = init_params(vocab.size, config.hidden_size, config.seed)
     state = TrainerState(
         params=params,
-        memory=zero_memory(params),
+        memory=zero_memory(params, AdagradMemory),
         hidden=np.zeros((config.hidden_size, 1)),
         smooth_loss=-np.log(1.0 / vocab.size) * config.seq_length,
         iteration=0,
