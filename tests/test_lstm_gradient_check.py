@@ -67,11 +67,26 @@ def test_analytic_gradient_matches_numerical_gradient(field):
         assert relative_error < 1e-3
 
 
-def test_dh0_and_dc0_match_numerical_gradients_of_the_initial_state():
-    """lstm_backpropagate_through_time's extra return values -- dh0 = dL/dh0 and dc0 = dL/dc0 --
-    are what tests/test_vanishing_gradient_comparison.py measures gradient
-    retention with, so they need the same numerical trust as the weight
-    gradients above."""
+def _assert_initial_state_gradient_matches_numerical_gradient(
+    initial_state, analytic_gradient, loss_for_state
+):
+    epsilon = 1e-4
+    for row in range(initial_state.shape[0]):
+        plus, minus = initial_state.copy(), initial_state.copy()
+        plus[row, 0] += epsilon
+        minus[row, 0] -= epsilon
+
+        loss_plus = loss_for_state(plus)
+        loss_minus = loss_for_state(minus)
+        numerical_gradient = (loss_plus - loss_minus) / (2 * epsilon)
+        relative_error = abs(numerical_gradient - analytic_gradient[row, 0]) / max(
+            1e-8, abs(numerical_gradient) + abs(analytic_gradient[row, 0])
+        )
+
+        assert relative_error < 1e-3
+
+
+def _initial_state_gradient_case():
     vocab = build_vocabulary("hello")
     params = initialize_lstm_parameters(vocab.size, hidden_size=6, seed=1)
     text_indices = encode(vocab, "hello")
@@ -81,24 +96,20 @@ def test_dh0_and_dc0_match_numerical_gradients_of_the_initial_state():
 
     hs, cs, _, ps = lstm_forward_sequence(params, inputs, h0, c0)
     _, dh0, dc0 = lstm_backpropagate_through_time(params, inputs, targets, hs, cs, ps)
+    return params, inputs, targets, h0, c0, dh0, dc0
 
-    epsilon = 1e-4
-    for name, base_state, analytic in [("h0", h0, dh0), ("c0", c0, dc0)]:
-        for row in range(base_state.shape[0]):
-            plus, minus = base_state.copy(), base_state.copy()
-            plus[row, 0] += epsilon
-            minus[row, 0] -= epsilon
 
-            if name == "h0":
-                loss_plus = _loss_for_params(params, inputs, targets, plus, c0)
-                loss_minus = _loss_for_params(params, inputs, targets, minus, c0)
-            else:
-                loss_plus = _loss_for_params(params, inputs, targets, h0, plus)
-                loss_minus = _loss_for_params(params, inputs, targets, h0, minus)
+def test_initial_hidden_state_gradient_matches_numerical_gradient():
+    """Check dh0, which the vanishing-gradient comparison uses."""
+    params, inputs, targets, h0, c0, dh0, _ = _initial_state_gradient_case()
+    loss_for_hidden = lambda state: _loss_for_params(params, inputs, targets, state, c0)
 
-            numerical_gradient = (loss_plus - loss_minus) / (2 * epsilon)
-            relative_error = abs(numerical_gradient - analytic[row, 0]) / max(
-                1e-8, abs(numerical_gradient) + abs(analytic[row, 0])
-            )
+    _assert_initial_state_gradient_matches_numerical_gradient(h0, dh0, loss_for_hidden)
 
-            assert relative_error < 1e-3
+
+def test_initial_cell_state_gradient_matches_numerical_gradient():
+    """Check dc0, which the vanishing-gradient comparison uses."""
+    params, inputs, targets, h0, c0, _, dc0 = _initial_state_gradient_case()
+    loss_for_cell = lambda state: _loss_for_params(params, inputs, targets, h0, state)
+
+    _assert_initial_state_gradient_matches_numerical_gradient(c0, dc0, loss_for_cell)

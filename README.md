@@ -29,11 +29,10 @@ see "On char-rnn" below.
     (see "One optimizer, two cell types" below); the stack reuses its
     lower-level `adagrad_step` directly, since a stack's parameters are
     nested rather than a flat dataclass
-- **Application (`application/train_service.py`)** — the one place allowed
-  to loop and accept a side-effecting callback (`on_snapshot`). It threads
-  an immutable `TrainerState` through the domain functions (vanilla-RNN
-  training only, for now — see "What's not here"). This is the
-  "imperative shell."
+- **Application (`application/train_service.py`)** — loops over batches and
+  epochs, threads an immutable `TrainerState` through the domain functions,
+  and returns final parameters with immutable per-batch snapshots in a
+  `TrainingResult` (vanilla-RNN training only, for now — see "What's not here").
 - **Infrastructure (`infrastructure/corpus.py`)** — where training text
   comes from (a file, or a small built-in default). The domain layer never
   knows or cares.
@@ -70,20 +69,17 @@ pip install -r requirements.txt
 pytest                       # run everything (~1-2s)
 pytest tests/test_lstm_gradient_check.py -v   # run just one section's tests
 
-coverage run -m pytest       # for the CRAP score
+python run_qa.py             # run tests, refresh coverage, and enforce CRAP < 5
+
+# Or run the quality steps separately:
+coverage run --branch -m pytest
 coverage json -o coverage.json
 python quality/crap.py
 ```
 
-> `radon`/`coverage` could not be installed or executed in the sandbox that
-> produced this project (no network access there), so `quality/crap.py`
-> is unverified end-to-end — everything else (all 74 tests, via a plain
-> assert-based shim standing in for pytest, including one that reproduces
-> `@pytest.mark.parametrize` stacking) was run and passes. If
-> `quality/crap.py` errors on your machine, run `radon cc -j domain
-> application` once and check its JSON keys match what `_run_radon()`
-> expects (`name`, `lineno`, `endline`, `complexity`); that's the one part
-> that depends on radon's exact version.
+> The CRAP check analyzes `domain/`, `application/`, and `tests/`; it excludes
+> `infrastructure/` and the quality tooling itself. The latest full run passed
+> all 135 tests and kept every analyzed function below the `5.0` threshold.
 
 ## Test file ↔ article section map
 

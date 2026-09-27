@@ -77,10 +77,12 @@ def stacked_step(
 
 
 def _append_layer_states(
-    hs_by_layer: List[List[np.ndarray]], current_hs: Sequence[np.ndarray]
-) -> None:
-    for layer_index, h in enumerate(current_hs):
-        hs_by_layer[layer_index].append(h)
+    hs_by_layer: Sequence[Sequence[np.ndarray]], current_hs: Sequence[np.ndarray]
+) -> Tuple[Tuple[np.ndarray, ...], ...]:
+    return tuple(
+        tuple(layer_states) + (hidden_state,)
+        for layer_states, hidden_state in zip(hs_by_layer, current_hs)
+    )
 
 
 def stacked_forward_sequence(
@@ -93,12 +95,12 @@ def stacked_forward_sequence(
     forward_sequence() uses (hs_by_layer[layer][0] == h0s[layer]), so
     stacked_backpropagate_through_time never needs to re-derive it.
     """
-    hs_by_layer: List[List[np.ndarray]] = [[h0] for h0 in h0s]
+    hs_by_layer = tuple((h0,) for h0 in h0s)
     ys, ps = [], []
     current_hs = tuple(h0s)
     for x_t in inputs:
         current_hs, y_t, p_t = stacked_step(params, x_t, current_hs)
-        _append_layer_states(hs_by_layer, current_hs)
+        hs_by_layer = _append_layer_states(hs_by_layer, current_hs)
         ys.append(y_t)
         ps.append(p_t)
-    return tuple(tuple(layer_hs) for layer_hs in hs_by_layer), tuple(ys), tuple(ps)
+    return hs_by_layer, tuple(ys), tuple(ps)

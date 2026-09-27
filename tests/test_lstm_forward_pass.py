@@ -82,7 +82,7 @@ def test_lstm_step_never_mutates_its_inputs():
     assert np.array_equal(x, x_before)
 
 
-def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0_c0():
+def test_forward_sequence_keeps_initial_hidden_and_cell_states():
     vocab = build_vocabulary("helo")
     params = initialize_lstm_parameters(vocab.size, hidden_size=6, seed=4)
     inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
@@ -90,9 +90,30 @@ def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0_c0():
 
     hs, cs, ys, ps = lstm_forward_sequence(params, inputs, h0, c0)
 
-    assert len(hs) == len(cs) == len(inputs) + 1
     assert np.array_equal(hs[0], h0)
     assert np.array_equal(cs[0], c0)
+
+
+def test_forward_sequence_returns_one_state_per_input():
+    vocab = build_vocabulary("helo")
+    params = initialize_lstm_parameters(vocab.size, hidden_size=6, seed=4)
+    inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
+    h0, c0 = np.zeros((6, 1)), np.zeros((6, 1))
+
+    hs, cs, _, _ = lstm_forward_sequence(params, inputs, h0, c0)
+
+    assert len(hs) == len(inputs) + 1
+    assert len(cs) == len(inputs) + 1
+
+
+def test_forward_sequence_returns_outputs_and_probabilities_per_input():
+    vocab = build_vocabulary("helo")
+    params = initialize_lstm_parameters(vocab.size, hidden_size=6, seed=4)
+    inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
+    h0, c0 = np.zeros((6, 1)), np.zeros((6, 1))
+
+    _, _, ys, ps = lstm_forward_sequence(params, inputs, h0, c0)
+
     assert len(ys) == len(ps) == len(inputs)
     assert all(np.isclose(p.sum(), 1.0) for p in ps)
 

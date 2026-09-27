@@ -122,27 +122,27 @@ $$
 \operatorname{CRAP} = C^2(1-v)^3 + C
 $$
 
-The configured failure threshold is `5.0`; the analyzer currently measures
-`domain/` and `application/`, not `infrastructure/`, the tests, or the quality
-tools themselves. Function coverage is estimated from executed and missing
-lines inside each Radon entry's source-line span, so treat it as a useful
-signal rather than a correctness proof.
+The configured failure threshold is `5.0`; the analyzer measures `domain/`,
+`application/`, and `tests/`, not `infrastructure/` or the quality tools
+themselves. Function coverage is estimated from executed and missing lines
+inside each Radon entry's source-line span, so treat it as a useful signal
+rather than a correctness proof.
 
-Latest run: all 74 tests passed under branch coverage. Every measured
-function is below the `5.0` threshold. The highest CRAP score is
-`stacked_forward_sequence` at complexity 4, 100% estimated line coverage,
-and score 4.00. `_run_epoch` is next at complexity 3, 86% coverage, and
-score 3.03; the remaining functions score 3.00 or less.
+Latest run: all 135 tests passed under branch coverage. Every measured
+function is below the `5.0` threshold. The highest CRAP score is `4.00`
+(complexity 4 with 100% estimated line coverage); several domain and test
+functions tie at this score.
 
-`_run_epoch` remains a reasonable candidate for focused tests around the
-optional `on_snapshot` callback and batch/epoch edge cases. The LSTM and
-stacked RNN have forward and gradient-check coverage, but are not wired into
-the application training loop; see the README's scope notes. Add tests for
-meaningful behavior rather than coverage percentage alone.
+The LSTM and stacked RNN have forward and gradient-check coverage, but are not
+wired into the application training loop; see the README's scope notes. Add
+tests for meaningful behavior rather than coverage percentage alone.
 
 Run the analysis after collecting fresh coverage data:
 
 ```bash
+./.venv/bin/python run_qa.py
+
+# Or run the steps separately:
 ./.venv/bin/python -m coverage run --branch -m pytest
 ./.venv/bin/python -m coverage json -o coverage.json
 ./.venv/bin/python quality/crap.py

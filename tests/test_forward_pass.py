@@ -64,7 +64,7 @@ def test_forward_step_never_mutates_its_inputs():
     assert np.array_equal(x, x_before)
 
 
-def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0():
+def test_forward_sequence_keeps_h0_as_the_initial_state():
     vocab = build_vocabulary("helo")
     params = initialize_rnn_parameters(vocab.size, hidden_size=8)
     inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
@@ -72,7 +72,27 @@ def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0():
 
     hs, ys, ps = forward_sequence(params, inputs, h0)
 
-    assert len(hs) == len(inputs) + 1  # h0 plus one new state per step
     assert np.array_equal(hs[0], h0)
+
+
+def test_forward_sequence_returns_one_state_per_input():
+    vocab = build_vocabulary("helo")
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
+    inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
+    h0 = np.zeros((8, 1))
+
+    hs, _, _ = forward_sequence(params, inputs, h0)
+
+    assert len(hs) == len(inputs) + 1
+
+
+def test_forward_sequence_returns_one_output_and_probability_per_input():
+    vocab = build_vocabulary("helo")
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
+    inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
+    h0 = np.zeros((8, 1))
+
+    _, ys, ps = forward_sequence(params, inputs, h0)
+
     assert len(ys) == len(inputs)
     assert len(ps) == len(inputs)

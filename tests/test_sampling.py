@@ -14,7 +14,7 @@ def test_sample_generates_the_requested_length_of_valid_indices():
 
     generated = sample(
         params, vocab, h0, seed_index=0, length=20, temperature=1.0,
-        rng=np.random.default_rng(0),
+        seed=0,
     )
 
     assert len(generated) == 20
@@ -26,8 +26,8 @@ def test_sample_is_reproducible_given_the_same_rng_seed():
     params = initialize_rnn_parameters(vocab.size, hidden_size=8, seed=4)
     h0 = np.zeros((8, 1))
 
-    first = sample(params, vocab, h0, 0, 15, 1.0, np.random.default_rng(42))
-    second = sample(params, vocab, h0, 0, 15, 1.0, np.random.default_rng(42))
+    first = sample(params, vocab, h0, 0, 15, 1.0, seed=42)
+    second = sample(params, vocab, h0, 0, 15, 1.0, seed=42)
 
     assert first == second
 
@@ -61,7 +61,7 @@ def test_higher_temperature_gives_at_least_as_much_diversity_as_lower():
     params = initialize_rnn_parameters(vocab.size, hidden_size=16, seed=5)
     h0 = np.zeros((16, 1))
 
-    low = sample(params, vocab, h0, 0, 60, temperature=0.01, rng=np.random.default_rng(2))
-    high = sample(params, vocab, h0, 0, 60, temperature=2.0, rng=np.random.default_rng(2))
+    low = sample(params, vocab, h0, 0, 60, temperature=0.01, seed=2)
+    high = sample(params, vocab, h0, 0, 60, temperature=2.0, seed=2)
 
     assert len(set(high)) >= len(set(low))

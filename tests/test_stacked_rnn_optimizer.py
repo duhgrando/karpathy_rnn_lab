@@ -29,14 +29,30 @@ def _ones_gradients(params):
     )
 
 
-def test_zero_stacked_memory_matches_every_layers_shapes():
+def test_zero_stacked_memory_matches_each_layer_shape():
     params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
 
     memory = zero_stacked_memory(params)
 
-    for layer_memory, layer_params in zip(memory.layers, params.layers):
-        assert layer_memory.mWxh.shape == layer_params.Wxh.shape
-        assert np.all(layer_memory.mWxh == 0.0)
+    assert all(
+        layer_memory.mWxh.shape == layer_params.Wxh.shape
+        for layer_memory, layer_params in zip(memory.layers, params.layers)
+    )
+
+
+def test_zero_stacked_memory_starts_each_layer_at_zero():
+    params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
+
+    memory = zero_stacked_memory(params)
+
+    assert all(np.all(layer_memory.mWxh == 0.0) for layer_memory in memory.layers)
+
+
+def test_zero_stacked_memory_matches_output_projection_shape():
+    params = initialize_stacked_rnn_parameters(vocab_size=4, hidden_sizes=HIDDEN_SIZES, seed=0)
+
+    memory = zero_stacked_memory(params)
+
     assert memory.mWhy.shape == params.Why.shape
 
 

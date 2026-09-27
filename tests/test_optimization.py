@@ -16,16 +16,19 @@ from domain.training import AdagradMemory, Gradients
 from domain.lstm_training import LSTMGradients
 
 
-def test_zero_memory_works_for_both_rnn_and_lstm_params():
+def test_zero_memory_matches_rnn_parameter_shapes():
     rnn_params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=0)
-    lstm_params = initialize_lstm_parameters(vocab_size=4, hidden_size=3, seed=0)
-
     rnn_memory = zero_memory(rnn_params, AdagradMemory)
-    lstm_memory = zero_memory(lstm_params, LSTMMemory)
 
     assert isinstance(rnn_memory, AdagradMemory)
-    assert isinstance(lstm_memory, LSTMMemory)
     assert np.array_equal(rnn_memory.mWxh, np.zeros_like(rnn_params.Wxh))
+
+
+def test_zero_memory_matches_lstm_parameter_shapes():
+    lstm_params = initialize_lstm_parameters(vocab_size=4, hidden_size=3, seed=0)
+    lstm_memory = zero_memory(lstm_params, LSTMMemory)
+
+    assert isinstance(lstm_memory, LSTMMemory)
     assert np.array_equal(lstm_memory.mWxi, np.zeros_like(lstm_params.Wxi))
 
 
@@ -46,23 +49,28 @@ def test_clip_gradients_works_for_both_gradient_shapes():
     assert clip_gradients(lstm_grads, clip=5.0).dWxi[0, 0] == 5.0
 
 
-def test_adagrad_update_moves_both_kinds_of_params_against_their_gradient():
-    rnn_params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=1)
-    lstm_params = initialize_lstm_parameters(vocab_size=4, hidden_size=3, seed=1)
-    rnn_memory = zero_memory(rnn_params, AdagradMemory)
-    lstm_memory = zero_memory(lstm_params, LSTMMemory)
+def _ones_like_gradients(params, gradients_type):
+    return gradients_type(**{
+        field.name: np.ones_like(getattr(params, field.name[1:]))
+        for field in gradients_type.__dataclass_fields__.values()
+    })
 
-    rnn_grads = Gradients(**{
-        f.name: np.ones_like(getattr(rnn_params, f.name[1:]))
-        for f in Gradients.__dataclass_fields__.values()
-    })
-    lstm_grads = LSTMGradients(**{
-        f.name: np.ones_like(getattr(lstm_params, f.name[1:]))
-        for f in LSTMGradients.__dataclass_fields__.values()
-    })
+
+def test_adagrad_update_moves_rnn_params_against_their_gradient():
+    rnn_params = initialize_rnn_parameters(vocab_size=4, hidden_size=3, seed=1)
+    rnn_memory = zero_memory(rnn_params, AdagradMemory)
+    rnn_grads = _ones_like_gradients(rnn_params, Gradients)
 
     new_rnn_params, _ = adagrad_update(rnn_params, rnn_grads, rnn_memory, learning_rate=0.5)
-    new_lstm_params, _ = adagrad_update(lstm_params, lstm_grads, lstm_memory, learning_rate=0.5)
 
     assert np.all(new_rnn_params.Wxh < rnn_params.Wxh)
+
+
+def test_adagrad_update_moves_lstm_params_against_their_gradient():
+    lstm_params = initialize_lstm_parameters(vocab_size=4, hidden_size=3, seed=1)
+    lstm_memory = zero_memory(lstm_params, LSTMMemory)
+    lstm_grads = _ones_like_gradients(lstm_params, LSTMGradients)
+
+    new_lstm_params, _ = adagrad_update(lstm_params, lstm_grads, lstm_memory, learning_rate=0.5)
+
     assert np.all(new_lstm_params.Wxi < lstm_params.Wxi)

@@ -3,6 +3,7 @@ hidden state becomes layer k+1's input, and only the top layer's hidden
 state gets projected to vocab-sized output logits.
 """
 import numpy as np
+import pytest
 
 from domain.stacked_rnn import initialize_stacked_rnn_parameters, stacked_forward_sequence, stacked_step
 from domain.vocabulary import build_vocabulary, encode, one_hot
@@ -19,7 +20,7 @@ def test_layer_shapes_chain_correctly_bottom_to_top():
     assert params.Why.shape == (vocab.size, 3)  # output <- top layer's hidden state
 
 
-def test_stacked_step_produces_one_hidden_state_per_layer_and_a_valid_distribution():
+def test_stacked_step_produces_one_hidden_state_per_layer():
     vocab = build_vocabulary("helo")
     params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=1)
     h0s = [np.zeros((5, 1)), np.zeros((3, 1))]
@@ -30,6 +31,16 @@ def test_stacked_step_produces_one_hidden_state_per_layer_and_a_valid_distributi
     assert len(new_hs) == 2
     assert new_hs[0].shape == (5, 1)
     assert new_hs[1].shape == (3, 1)
+
+
+def test_stacked_step_produces_a_valid_probability_distribution():
+    vocab = build_vocabulary("helo")
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=1)
+    h0s = [np.zeros((5, 1)), np.zeros((3, 1))]
+    x = one_hot(vocab, 0)
+
+    _, _, p_t = stacked_step(params, x, h0s)
+
     assert p_t.shape == (vocab.size, 1)
     assert np.isclose(p_t.sum(), 1.0)
 
@@ -63,7 +74,7 @@ def test_stacked_step_never_mutates_its_inputs():
     assert np.array_equal(x, x_before)
 
 
-def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0_per_layer():
+def test_forward_sequence_keeps_initial_hidden_state_per_layer():
     vocab = build_vocabulary("helo")
     params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=4)
     inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
@@ -71,9 +82,28 @@ def test_forward_sequence_unrolls_one_step_per_input_and_keeps_h0_per_layer():
 
     hs_by_layer, ys, ps = stacked_forward_sequence(params, inputs, h0s)
 
-    assert len(hs_by_layer) == 2  # one hidden-state trace per layer
-    assert len(hs_by_layer[0]) == len(inputs) + 1
-    assert len(hs_by_layer[1]) == len(inputs) + 1
     assert np.array_equal(hs_by_layer[0][0], h0s[0])
     assert np.array_equal(hs_by_layer[1][0], h0s[1])
+
+
+@pytest.mark.parametrize("layer_index", (0, 1))
+def test_forward_sequence_returns_one_state_per_input_and_layer(layer_index):
+    vocab = build_vocabulary("helo")
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=4)
+    inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
+    h0s = [np.zeros((5, 1)), np.zeros((3, 1))]
+
+    hs_by_layer, _, _ = stacked_forward_sequence(params, inputs, h0s)
+
+    assert len(hs_by_layer[layer_index]) == len(inputs) + 1
+
+
+def test_forward_sequence_returns_one_output_and_probability_per_input():
+    vocab = build_vocabulary("helo")
+    params = initialize_stacked_rnn_parameters(vocab.size, hidden_sizes=(5, 3), seed=4)
+    inputs = [one_hot(vocab, i) for i in encode(vocab, "hell")]
+    h0s = [np.zeros((5, 1)), np.zeros((3, 1))]
+
+    _, ys, ps = stacked_forward_sequence(params, inputs, h0s)
+
     assert len(ys) == len(ps) == len(inputs)

@@ -1,5 +1,5 @@
 """Compute an approximate CRAP (Change Risk Anti-Patterns) score for every
-function in domain/ and application/:
+function in domain/, application/, and tests/:
 
     CRAP(m) = complexity(m)^2 * (1 - coverage(m))^3 + complexity(m)
 
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 THRESHOLD = 5.0
-SOURCE_DIRS = ["domain", "application"]
+SOURCE_DIRS = ["domain", "application", "tests"]
 
 
 def _run_radon() -> list[dict]:

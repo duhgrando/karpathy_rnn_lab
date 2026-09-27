@@ -33,15 +33,15 @@ def sample(
     seed_index: int,
     length: int,
     temperature: float,
-    rng: np.random.Generator,
+    seed: int,
 ) -> Tuple[int, ...]:
     """Generate `length` character indices, feeding each sampled character
     back in as the next input.
 
-    `rng` is threaded in explicitly rather than relying on numpy's global
-    random state, so sampling stays a pure function of its arguments and is
-    exactly reproducible for a given seed.
+    A generator is created locally from `seed` rather than mutating a
+    caller-owned random state, so sampling is reproducible for a given seed.
     """
+    rng = np.random.default_rng(seed)
     h = h0
     x = one_hot(vocab, seed_index)
     generated = []

@@ -121,6 +121,8 @@ def _initialize_layer_gradients(params, hs_by_layer):
 def _accumulate_layer_gradients(
     params, inputs, hs_by_layer, t, gradient_from_above, layer_grads, dh_next_by_layer
 ):
+    updated_layer_gradients = [dict(gradients) for gradients in layer_grads]
+    updated_next_hidden_gradients = list(dh_next_by_layer)
     for layer_index in reversed(range(len(params.layers))):
         layer = params.layers[layer_index]
         h_t = hs_by_layer[layer_index][t + 1]
@@ -132,12 +134,15 @@ def _accumulate_layer_gradients(
         dh = gradient_from_above + dh_next_by_layer[layer_index]
         dh_raw = (1 - h_t ** 2) * dh  # tanh'(h) = 1 - h^2
 
-        layer_grads[layer_index]["dbh"] += dh_raw
-        layer_grads[layer_index]["dWxh"] += dh_raw @ layer_input.T
-        layer_grads[layer_index]["dWhh"] += dh_raw @ h_prev.T
+        updated_layer_gradients[layer_index] = {
+            "dbh": layer_grads[layer_index]["dbh"] + dh_raw,
+            "dWxh": layer_grads[layer_index]["dWxh"] + dh_raw @ layer_input.T,
+            "dWhh": layer_grads[layer_index]["dWhh"] + dh_raw @ h_prev.T,
+        }
 
-        dh_next_by_layer[layer_index] = layer.Whh.T @ dh_raw
+        updated_next_hidden_gradients[layer_index] = layer.Whh.T @ dh_raw
         gradient_from_above = layer.Wxh.T @ dh_raw  # hands off to the layer below
+    return updated_layer_gradients, updated_next_hidden_gradients
 
 
 def stacked_backpropagate_through_time(
@@ -163,7 +168,7 @@ def stacked_backpropagate_through_time(
         dby += dy
 
         gradient_from_above = params.Why.T @ dy  # flows into the top layer first
-        _accumulate_layer_gradients(
+        layer_grads, dh_next_by_layer = _accumulate_layer_gradients(
             params, inputs, hs_by_layer, t, gradient_from_above,
             layer_grads, dh_next_by_layer,
         )

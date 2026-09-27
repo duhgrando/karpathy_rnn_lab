@@ -1,14 +1,13 @@
 """Application service: the training loop.
 
-This is the one place in the project allowed to loop and to accept an
-optional side-effecting callback (`on_snapshot`) -- everything it calls into
-is a pure domain function. State is still never mutated in place: each step
-produces a new, immutable TrainerState that gets threaded into the next one.
+This service loops over epochs and batches, but returns its outputs as data
+and never invokes callbacks or mutates caller-owned state. Each step produces
+a new TrainerState that gets threaded into the next one.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Callable, Iterator, Optional, Tuple
+from typing import Iterator, Tuple
 
 import numpy as np
 
@@ -26,6 +25,7 @@ from domain.vocabulary import Vocabulary, encode, one_hot
 __all__ = [
     "TrainingConfig",
     "TrainingSnapshot",
+    "TrainingResult",
     "TrainerState",
     "train",
     "sample_from_model",
@@ -42,10 +42,17 @@ class TrainingConfig:
 
 @dataclass(frozen=True)
 class TrainingSnapshot:
-    """One reported checkpoint, handed to on_snapshot as training runs."""
+    """One checkpoint captured after a training batch."""
     iteration: int
     smooth_loss: float
     params: RNNParams
+
+
+@dataclass(frozen=True)
+class TrainingResult:
+    """Final parameters and immutable per-batch training snapshots."""
+    params: RNNParams
+    snapshots: Tuple[TrainingSnapshot, ...]
 
 
 @dataclass(frozen=True)
@@ -98,14 +105,13 @@ def _run_epoch(
     config: TrainingConfig,
     indices: Tuple[int, ...],
     state: TrainerState,
-    on_snapshot: Optional[Callable[[TrainingSnapshot], None]],
-) -> TrainerState:
+) -> Tuple[TrainerState, Tuple[TrainingSnapshot, ...]]:
     state = replace(state, hidden=np.zeros_like(state.hidden))
+    snapshots = ()
     for batch in _make_batches(indices, config.seq_length):
         state = _run_batch(vocab, config, batch, state)
-        if on_snapshot is not None:
-            on_snapshot(TrainingSnapshot(state.iteration, state.smooth_loss, state.params))
-    return state
+        snapshots += (TrainingSnapshot(state.iteration, state.smooth_loss, state.params),)
+    return state, snapshots
 
 
 def train(
@@ -113,14 +119,14 @@ def train(
     vocab: Vocabulary,
     config: TrainingConfig,
     epochs: int,
-    on_snapshot: Optional[Callable[[TrainingSnapshot], None]] = None,
-) -> RNNParams:
+) -> TrainingResult:
     """Run truncated BPTT training over `epochs` passes of the corpus.
 
     Mirrors Karpathy's reference training loop: chunk the corpus into
     fixed-length windows, carry the hidden state forward between
     consecutive windows within an epoch, and track an exponential moving
-    average of the loss.
+    average of the loss. Return the final parameters and each batch snapshot
+    as data, without invoking a callback.
     """
     indices = encode(vocab, corpus)
     params = initialize_rnn_parameters(vocab.size, config.hidden_size, config.seed)
@@ -131,6 +137,8 @@ def train(
         smooth_loss=-np.log(1.0 / vocab.size) * config.seq_length,
         iteration=0,
     )
+    snapshots = ()
     for _ in range(epochs):
-        state = _run_epoch(vocab, config, indices, state, on_snapshot)
-    return state.params
+        state, epoch_snapshots = _run_epoch(vocab, config, indices, state)
+        snapshots += epoch_snapshots
+    return TrainingResult(params=state.params, snapshots=snapshots)

@@ -31,8 +31,8 @@ def test_loss_falls_substantially_over_training():
     window_targets = indices[1:config.seq_length + 1]
     h0 = np.zeros((config.hidden_size, 1))
 
-    initial_params = train(corpus, vocab, config, epochs=0)  # untrained baseline
-    trained_params = train(corpus, vocab, config, epochs=20)
+    initial_params = train(corpus, vocab, config, epochs=0).params  # untrained baseline
+    trained_params = train(corpus, vocab, config, epochs=20).params
 
     _, _, initial_ps = forward_sequence(initial_params, window_inputs, h0)
     _, _, trained_ps = forward_sequence(trained_params, window_inputs, h0)
@@ -47,14 +47,24 @@ def test_low_temperature_sample_after_training_reproduces_training_words():
     vocab = build_vocabulary(corpus)
     config = TrainingConfig(hidden_size=32, seq_length=20, learning_rate=0.1, seed=0)
 
-    params = train(corpus, vocab, config, epochs=8)
+    params = train(corpus, vocab, config, epochs=8).params
 
     seed_index = encode(vocab, "t")[0]
     h0 = np.zeros((config.hidden_size, 1))
     generated = sample_from_model(
         params, vocab, h0, seed_index=seed_index, length=40,
-        temperature=0.2, rng=np.random.default_rng(0),
+        temperature=0.2, seed=0,
     )
     generated_text = "".join(vocab.chars[i] for i in generated)
 
     assert any(word in generated_text for word in ("quick", "fox", "the"))
+
+
+def test_train_returns_batch_snapshots_as_data():
+    vocab = build_vocabulary("abba")
+    config = TrainingConfig(hidden_size=3, seq_length=2, seed=0)
+
+    result = train("abba", vocab, config, epochs=2)
+
+    assert isinstance(result.snapshots, tuple)
+    assert [snapshot.iteration for snapshot in result.snapshots] == [1, 2]

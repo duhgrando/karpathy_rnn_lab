@@ -4,4 +4,4 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["domain", "application"]
+source = ["domain", "application", "tests"]
