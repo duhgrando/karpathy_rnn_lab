@@ -1,5 +1,5 @@
 """Compute an approximate CRAP (Change Risk Anti-Patterns) score for every
-function in domain/, application/, and tests/:
+function in infrastructure/, domain/, application/, scripts/, and tests/:
 
     CRAP(m) = complexity(m)^2 * (1 - coverage(m))^3 + complexity(m)
 
@@ -17,7 +17,7 @@ Usage:
 Only tested against radon's documented `cc -j` JSON shape (each function
 entry has name / lineno / endline / complexity). If radon changes that
 shape in a future release and this script errors on a missing key, the
-fix is to inspect `radon cc -j domain application` directly and adjust
+    fix is to inspect `radon cc -j infrastructure domain application scripts` directly and adjust
 _run_radon()/_function_coverage() to match.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 THRESHOLD = 5.0
-SOURCE_DIRS = ["domain", "application", "tests"]
+SOURCE_DIRS = ["infrastructure", "domain", "application", "scripts", "tests"]
 
 
 def _run_radon() -> list[dict]:

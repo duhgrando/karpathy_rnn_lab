@@ -73,7 +73,7 @@ pip install -r requirements.txt
 pytest                       # run everything (~1-2s)
 pytest tests/test_lstm_gradient_check.py -v   # run just one section's tests
 
-python run_qa.py             # run tests, refresh coverage, and enforce CRAP < 5
+python -m scripts.run_qa     # run tests, refresh coverage, and enforce CRAP < 5
 
 # Or run the quality steps separately:
 coverage run --branch -m pytest
@@ -81,9 +81,8 @@ coverage json -o coverage.json
 python quality/crap.py
 ```
 
-> The CRAP check analyzes `domain/`, `application/`, and `tests/`; it excludes
-> `infrastructure/` and the quality tooling itself. The latest full run passed
-> all 247 tests and kept every analyzed function below the `5.0` threshold.
+> The CRAP check analyzes `infrastructure/`, `domain/`, `application/`,
+> `scripts/`, and `tests/`; it excludes the quality tooling itself.
 
 ## Test file ↔ article section map
 
@@ -112,6 +111,8 @@ python quality/crap.py
 | `test_stacked_lstm_dropout.py` | *Going deep* | inter-layer masks are seeded and reproducible, inference disables dropout, and BPTT returns finite gradients with masks applied |
 | `test_stacked_lstm_batching.py` | *Going deep* | per-column probabilities normalize; mean token loss agrees with separate examples, including batch size one |
 | `test_stacked_lstm_batch_training.py` | *Going deep* | contiguous streams produce shifted targets, batched gradients pass finite differences, and seeded minibatch training lowers fixed-window loss |
+| `test_delayed_copy.py` | *Long-range memory demo* | fixed delayed-copy examples, deterministic train/eval splits, and answer-only loss/accuracy that ignore the prompt and distractor span |
+| `test_delayed_copy_e2e.py` | *Long-range memory demo* | the vanilla RNN and LSTM can be trained and evaluated on the same delayed-copy task with finite answer-only metrics |
 
 ## A note on the training corpus
 
@@ -133,10 +134,19 @@ port Lua/Torch line-by-line, this project reimplements char-rnn's two real
 upgrades over that gist (the LSTM cell, layer stacking) directly in the
 same pure/DDD/gradient-checked style as everything else here.
 
-## What's not here (scope, deliberately)
+## Long-range memory demo
 
-- **A trained-model demonstration of long-range memory** (e.g. a
-  delayed-copy task) for the LSTM vs. vanilla RNN. `test_vanishing_gradient_comparison.py`
-  measures the actual mechanism (gradient decay) directly and
-  deterministically instead, which is faster, exact, and doesn't depend on
-  training hyperparameters happening to cooperate.
+The repository now includes a deterministic delayed-copy task that exercises
+exactly the memory problem the LSTM is designed to handle: a short payload is
+repeated only after a fixed delay filled with distractor symbols, and the
+loss/accuracy are measured only on the answer positions at the end of the
+sequence. Each example is bounded by dedicated start/end tokens. The helper in
+`infrastructure/delayed_copy.py` builds those examples,
+`application/delayed_copy_eval.py` computes answer-only metrics, and the
+runner `scripts/run_delayed_copy_demo.py` trains the vanilla RNN and LSTM on
+the same split for a quick baseline comparison. Run it with
+`python -m scripts.run_delayed_copy_demo` from the repository root.
+
+`test_vanishing_gradient_comparison.py` remains the mechanism-level proof for
+vanishing vs. preserved gradients; the delayed-copy demo is the end-to-end
+behavioral check on a task that is intentionally small and deterministic.

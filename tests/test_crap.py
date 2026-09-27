@@ -1,6 +1,14 @@
 import quality.crap as crap
 
 
+def test_crap_scan_includes_infrastructure():
+    assert "infrastructure" in crap.SOURCE_DIRS
+
+
+def test_crap_scan_includes_scripts():
+    assert "scripts" in crap.SOURCE_DIRS
+
+
 def test_crap_score_equals_complexity_at_full_coverage():
     assert crap.crap_score(4, 1.0) == 4.0
 

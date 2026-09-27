@@ -8,12 +8,21 @@ import pkgutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, fields, is_dataclass
 from functools import singledispatch
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 import application
 import domain
+import infrastructure
+from application.delayed_copy_eval import (
+    _evaluate_example,
+    _model_result,
+    _shared_vocabulary,
+    answer_only_loss_and_accuracy,
+    evaluate_delayed_copy,
+)
 from application.train_service import (
     TrainerState,
     TrainingConfig,
@@ -132,6 +141,11 @@ from domain.vocabulary import (
     index_to_char,
     one_hot,
 )
+from infrastructure.corpus import load_corpus
+from infrastructure.delayed_copy import (
+    build_delayed_copy_example,
+    generate_delayed_copy_dataset,
+)
 
 @dataclass(frozen=True)
 class FunctionSpec:
@@ -206,7 +220,7 @@ class StackedLSTMCase:
 def _source_modules():
     return tuple(
         importlib.import_module(module_info.name)
-        for package in (application, domain)
+        for package in (application, domain, infrastructure)
         for module_info in pkgutil.walk_packages(
             package.__path__, prefix=f"{package.__name__}."
         )
@@ -625,6 +639,33 @@ def _application_specs(sequence, rnn, lstm, stacked):
         params=stacked.params, memory=stacked.memory,
         hidden=stacked.initial_hidden_states, smooth_loss=1.0, iteration=0,
     )
+    delayed_example = build_delayed_copy_example("ab", 2, distractor=".")
+    delayed_train, delayed_eval = generate_delayed_copy_dataset(["ab", "cd", "ef"], 2, seed=5)
+    delayed_probabilities = np.zeros((len(delayed_example.sequence), len(delayed_example.vocabulary)), dtype=float)
+    delayed_probabilities[-2, delayed_example.answer_targets[0]] = 0.95
+    delayed_probabilities[-2, 0] = 0.05
+    delayed_probabilities[-1, delayed_example.answer_targets[1]] = 0.95
+    delayed_probabilities[-1, 0] = 0.05
+    for row in range(len(delayed_example.sequence) - 2):
+        delayed_probabilities[row] = 1.0 / len(delayed_example.vocabulary)
+    delayed_params = initialize_rnn_parameters(
+        len(delayed_example.vocabulary), hidden_size=3, seed=1
+    )
+
+    class _TrainResultWrapper:
+        def __init__(self, params):
+            self.params = params
+
+        def __eq__(self, other):
+            if not isinstance(other, _TrainResultWrapper):
+                return False
+            return self.params.__class__ is other.params.__class__ and all(
+                np.array_equal(getattr(self.params, field.name), getattr(other.params, field.name))
+                for field in fields(self.params.__class__)
+            )
+
+    train_result = _TrainResultWrapper(delayed_params)
+    eval_vocab = build_vocabulary(delayed_example.sequence)
     indices = sequence.character_indices
     return (
         _spec("application.make_batches", _make_batches, indices, 2),
@@ -637,6 +678,14 @@ def _application_specs(sequence, rnn, lstm, stacked):
         _spec("application.stacked_run_batch", _run_stacked_batch, sequence.vocabulary, stacked_config, (indices[:2], indices[1:3]), stacked_state),
         _spec("application.stacked_run_epoch", _run_stacked_epoch, sequence.vocabulary, stacked_config, indices, stacked_state),
         _spec("application.train_stacked_rnn", train_stacked_rnn, "abba", sequence.vocabulary, stacked_config, 1),
+        _spec("application.delayed_copy.shared_vocabulary", _shared_vocabulary, (delayed_example,)),
+        _spec("application.delayed_copy.evaluate_example", _evaluate_example, "rnn", delayed_params, delayed_example, 3, eval_vocab),
+        _spec("application.delayed_copy.model_result", _model_result, train_result, "rnn", (delayed_example,), 3, eval_vocab),
+        _spec("application.delayed_copy.answer_only_loss_and_accuracy", answer_only_loss_and_accuracy, delayed_probabilities, delayed_example.answer_mask, delayed_example.answer_targets),
+        _spec("application.delayed_copy.evaluate_delayed_copy", evaluate_delayed_copy, "rnn", delayed_train, delayed_eval, 3, 1, 7, 0.1, 4),
+        _spec("infrastructure.corpus.load_corpus", load_corpus),
+        _spec("infrastructure.delayed_copy.build_example", build_delayed_copy_example, "ab", 2, "."),
+        _spec("infrastructure.delayed_copy.generate_dataset", generate_delayed_copy_dataset, ["ab", "cd", "ef"], 2, 5),
     )
 
 
@@ -686,6 +735,6 @@ def _missing_function_cases():
     )
 
 
-def test_every_domain_and_application_function_has_a_mutation_case():
+def test_every_source_function_has_a_mutation_case():
     missing_cases = _missing_function_cases()
     assert not missing_cases, f"Add mutation cases for: {', '.join(missing_cases)}"

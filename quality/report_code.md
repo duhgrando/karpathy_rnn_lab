@@ -24,11 +24,11 @@ not the large corpus used in the article's experiments.
 
 ## Architecture
 
-The caller loads text and builds a vocabulary before passing them to the
-application service. Infrastructure supplies corpus text and does not depend
-on the domain or application layers. The application training service
-currently trains the vanilla RNN; the LSTM and stacked RNN implementations
-are domain-level forward and gradient APIs with focused correctness tests.
+The caller loads text and builds a vocabulary before passing them to one of
+the application services. Infrastructure supplies corpus text and delayed-copy
+examples without depending on the domain or application layers. The
+application services train the vanilla RNN, LSTM, stacked RNN, and stacked
+LSTM; the latter also supports minibatches and inter-layer dropout.
 
 ```mermaid
 flowchart LR
@@ -36,10 +36,14 @@ flowchart LR
     Corpus[infrastructure.corpus<br/>load_corpus]
     Vocabulary[domain.vocabulary<br/>build / encode / one_hot]
     App[application.train_service<br/>vanilla RNN training]
+    LSTMApp[application.lstm_train_service<br/>LSTM training]
+    StackApp[application.stacked_train_service<br/>stacked RNN training]
+    StackLSTMApp[application.stacked_lstm_train_service<br/>stacked LSTM training]
     RNN[domain.rnn_model<br/>forward / loss]
     RNNTrain[domain.training<br/>vanilla BPTT]
     LSTM[domain.lstm_model + lstm_training<br/>LSTM forward / BPTT]
     Stack[domain.stacked_rnn + stacked_training<br/>stacked forward / BPTT]
+    StackLSTM[domain.stacked_lstm + stacked_lstm_training<br/>batched stacked LSTM]
     Optimizer[domain.optimization<br/>shared clipping / Adagrad]
     StackOptimizer[stacked_training<br/>nested stack optimizer]
     Sampling[domain.sampling<br/>autoregressive generation]
@@ -47,11 +51,19 @@ flowchart LR
     Caller --> Corpus
     Caller --> Vocabulary
     Caller --> App
+    Caller --> LSTMApp
+    Caller --> StackApp
+    Caller --> StackLSTMApp
     Corpus -->|text| App
     Vocabulary -->|vocabulary and encoded inputs| App
     App --> RNN
     App --> RNNTrain
     App --> Optimizer
+    LSTMApp --> LSTM
+    LSTMApp --> Optimizer
+    StackApp --> Stack
+    StackLSTMApp --> StackLSTM
+    StackLSTMApp --> StackOptimizer
     LSTM --> Optimizer
     Stack --> StackOptimizer
     Optimizer --> App
@@ -98,8 +110,11 @@ sequenceDiagram
 | Layer chaining in a stacked RNN | [stacked_rnn.py](../domain/stacked_rnn.py) | [test_stacked_rnn_forward_pass.py](../tests/test_stacked_rnn_forward_pass.py) |
 | Gradients through stacked layers and time | [stacked_training.py](../domain/stacked_training.py) | [test_stacked_rnn_gradient_check.py](../tests/test_stacked_rnn_gradient_check.py) |
 | Clipping and Adagrad for nested stacked parameters | [stacked_training.py](../domain/stacked_training.py) | [test_stacked_rnn_optimizer.py](../tests/test_stacked_rnn_optimizer.py) |
+| Stacked LSTM forward pass, batching, dropout, and gradients | [stacked_lstm.py](../domain/stacked_lstm.py), [stacked_lstm_training.py](../domain/stacked_lstm_training.py) | [test_stacked_lstm_forward_pass.py](../tests/test_stacked_lstm_forward_pass.py), [test_stacked_lstm_batching.py](../tests/test_stacked_lstm_batching.py), [test_stacked_lstm_gradient_check.py](../tests/test_stacked_lstm_gradient_check.py), [test_stacked_lstm_dropout.py](../tests/test_stacked_lstm_dropout.py) |
+| Stacked LSTM minibatch training and nested optimizer | [stacked_lstm_training.py](../domain/stacked_lstm_training.py) | [test_stacked_lstm_batch_training.py](../tests/test_stacked_lstm_batch_training.py), [test_stacked_lstm_optimizer.py](../tests/test_stacked_lstm_optimizer.py) |
 | Autoregressive sampling and temperature | [sampling.py](../domain/sampling.py) | [test_sampling.py](../tests/test_sampling.py) |
 | Training loss improvement and generated samples | [train_service.py](../application/train_service.py) | [test_training_evolution_e2e.py](../tests/test_training_evolution_e2e.py) |
+| Delayed-copy data and answer-only evaluation | [delayed_copy.py](../infrastructure/delayed_copy.py), [delayed_copy_eval.py](../application/delayed_copy_eval.py) | [test_delayed_copy.py](../tests/test_delayed_copy.py), [test_delayed_copy_e2e.py](../tests/test_delayed_copy_e2e.py) |
 
 Run a focused test, for example the LSTM gradient check:
 
@@ -122,25 +137,26 @@ $$
 \operatorname{CRAP} = C^2(1-v)^3 + C
 $$
 
-The configured failure threshold is `5.0`; the analyzer measures `domain/`,
-`application/`, and `tests/`, not `infrastructure/` or the quality tools
-themselves. Function coverage is estimated from executed and missing lines
-inside each Radon entry's source-line span, so treat it as a useful signal
-rather than a correctness proof.
+The configured failure threshold is `5.0`; the analyzer measures
+`infrastructure/`, `domain/`, `application/`, `scripts/`, and `tests/`, not
+the quality tools themselves. Function coverage is estimated from executed
+and missing lines inside each Radon entry's source-line span, so treat it as a
+useful signal rather than a correctness proof.
 
-Latest run: all 135 tests passed under branch coverage. Every measured
-function is below the `5.0` threshold. The highest CRAP score is `4.00`
-(complexity 4 with 100% estimated line coverage); several domain and test
-functions tie at this score.
+Latest run: 268 tests were collected, and the activated virtual environment's
+quality run completed successfully under branch coverage. Every measured
+function is below the `5.0` threshold. The highest CRAP score is `4.37` for
+`domain/stacked_lstm_training.py:_target_matrix` (complexity 4 with 71%
+estimated line coverage).
 
-The LSTM and stacked RNN have forward and gradient-check coverage, but are not
-wired into the application training loop; see the README's scope notes. Add
-tests for meaningful behavior rather than coverage percentage alone.
+The report measures all four application training paths, including stacked
+LSTM batching and dropout. Add tests for meaningful behavior rather than
+coverage percentage alone.
 
 Run the analysis after collecting fresh coverage data:
 
 ```bash
-./.venv/bin/python run_qa.py
+./.venv/bin/python -m scripts.run_qa
 
 # Or run the steps separately:
 ./.venv/bin/python -m coverage run --branch -m pytest
