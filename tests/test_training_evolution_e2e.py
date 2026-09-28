@@ -10,6 +10,8 @@ trained model reproduces whole words from the training text -- the toy-scale
 version of the "is that they were all the same thing that was a startup"
 near-memorization example the article shows under low temperature.
 """
+from pathlib import Path
+
 import numpy as np
 
 from application.train_service import TrainingConfig, sample_from_model, train
@@ -40,6 +42,36 @@ def test_loss_falls_substantially_over_training():
     trained_loss = cross_entropy_loss(trained_ps, window_targets)
 
     assert trained_loss < initial_loss * 0.2
+
+
+def test_tiny_shakespeare_file_trains_and_samples_end_to_end():
+    corpus_path = Path(__file__).parents[1] / "infrastructure" / "input_tinyshakespeare.txt"
+    corpus = load_corpus(str(corpus_path))[:2000]
+    vocab = build_vocabulary(corpus)
+    config = TrainingConfig(hidden_size=8, seq_length=20, learning_rate=0.1, seed=0)
+    indices = encode(vocab, corpus)
+    window_inputs = [one_hot(vocab, index) for index in indices[:config.seq_length]]
+    window_targets = indices[1:config.seq_length + 1]
+    initial_params = train(corpus, vocab, config, epochs=0).params
+    trained = train(corpus, vocab, config, epochs=4)
+    h0 = np.zeros((config.hidden_size, 1))
+
+    _, _, initial_ps = forward_sequence(initial_params, window_inputs, h0)
+    _, _, trained_ps = forward_sequence(trained.params, window_inputs, h0)
+    initial_loss = cross_entropy_loss(initial_ps, window_targets)
+    trained_loss = cross_entropy_loss(trained_ps, window_targets)
+    generated = sample_from_model(
+        trained.params,
+        vocab,
+        h0,
+        seed_index=indices[0],
+        length=40,
+        temperature=0.8,
+        seed=0,
+    )
+
+    assert trained_loss < initial_loss
+    assert len(generated) == 40
 
 
 def test_low_temperature_sample_after_training_reproduces_training_words():
