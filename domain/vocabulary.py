@@ -14,6 +14,8 @@ from typing import Tuple
 
 import numpy as np
 
+from domain.rnn_types import RNNInput
+
 
 @dataclass(frozen=True)
 class Vocabulary:
@@ -46,8 +48,8 @@ def decode(vocab: Vocabulary, indices: Tuple[int, ...]) -> str:
     return "".join(index_to_char(vocab, i) for i in indices)
 
 
-def one_hot(vocab: Vocabulary, index: int) -> np.ndarray:
+def one_hot(vocab: Vocabulary, index: int) -> RNNInput:
     """1-of-k encoding: all zero except a single one at the character's index."""
     vector = np.zeros((vocab.size, 1))
     vector[index, 0] = 1.0
-    return vector
+    return RNNInput(vector)

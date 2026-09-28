@@ -16,9 +16,25 @@ an argument. RNNParams is a frozen dataclass; initialize_rnn_parameters is the o
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+from typing import NamedTuple, Sequence
 
 import numpy as np
+
+from domain.rnn_types import (
+    HiddenState,
+    LogitOutput,
+    ProbabilityOutput,
+    RNNArray,
+    RNNInput,
+)
+
+
+class RNNOutput(NamedTuple):
+    """The hidden state, logits, and probabilities produced at one time step."""
+
+    hidden_state: HiddenState
+    logits: LogitOutput
+    probabilities: ProbabilityOutput
 
 
 @dataclass(frozen=True)
@@ -52,44 +68,51 @@ def initialize_rnn_parameters(vocab_size: int, hidden_size: int, seed: int = 0) 
     )
 
 
-def softmax(logits: np.ndarray) -> np.ndarray:
+def softmax(logits: RNNArray) -> RNNArray:
     shifted = logits - np.max(logits)
     exp = np.exp(shifted)
     return exp / np.sum(exp)
 
 
 def forward_step(
-    params: RNNParams, x_t: np.ndarray, h_prev: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """One RNN time step. Pure: returns a new state, never mutates h_prev."""
-    h_t = np.tanh(params.Whh @ h_prev + params.Wxh @ x_t + params.bh)
-    y_t = params.Why @ h_t + params.by
-    p_t = softmax(y_t)
-    return h_t, y_t, p_t
+    params: RNNParams, x_t: RNNInput, h_prev: RNNArray
+) -> RNNOutput:
+    """Compute one step and return its named values without mutating inputs."""
+    h_t = HiddenState(np.tanh(params.Whh @ h_prev + params.Wxh @ x_t + params.bh))
+    y_t = LogitOutput(params.Why @ h_t + params.by)
+    p_t = ProbabilityOutput(softmax(y_t))
+    return RNNOutput(h_t, y_t, p_t)
 
 
 def forward_sequence(
-    params: RNNParams, inputs: Sequence[np.ndarray], h0: np.ndarray
-):
+    params: RNNParams, inputs: Sequence[RNNInput], h0: RNNArray
+) -> tuple[
+    tuple[HiddenState, ...],
+    tuple[LogitOutput, ...],
+    tuple[ProbabilityOutput, ...],
+]:
     """Unroll forward_step over a sequence of one-hot input vectors.
 
     Returns (hs, ys, ps): hs has one extra leading entry, hs[0] == h0, so
     hs[t] is always the "h_{t-1}" that produced hs[t + 1] -- exactly what
     BPTT needs without recomputing the forward pass.
     """
-    hs = [h0]
-    ys = []
-    ps = []
+    hs: list[HiddenState] = [HiddenState(h0)]
+    ys: list[LogitOutput] = []
+    ps: list[ProbabilityOutput] = []
     h = h0
     for x_t in inputs:
-        h, y, p = forward_step(params, x_t, h)
-        hs.append(h)
-        ys.append(y)
-        ps.append(p)
+        step_output = forward_step(params, x_t, h)
+        h = step_output.hidden_state
+        hs.append(step_output.hidden_state)
+        ys.append(step_output.logits)
+        ps.append(step_output.probabilities)
     return tuple(hs), tuple(ys), tuple(ps)
 
 
-def cross_entropy_loss(ps: Sequence[np.ndarray], target_indices: Sequence[int]) -> float:
+def cross_entropy_loss(
+    ps: Sequence[ProbabilityOutput], target_indices: Sequence[int]
+) -> float:
     """Sum of -log p(correct char) over the sequence -- the Softmax /
     cross-entropy loss applied to every output vector simultaneously."""
     return float(sum(-np.log(p[t, 0] + 1e-12) for p, t in zip(ps, target_indices)))

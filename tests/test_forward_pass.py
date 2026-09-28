@@ -1,7 +1,12 @@
 """§ 'RNN computation' -- h = tanh(Whh h + Wxh x + bh), y = Why h + by."""
 import numpy as np
 
-from domain.rnn_model import forward_sequence, forward_step, initialize_rnn_parameters
+from domain.rnn_model import (
+    RNNOutput,
+    forward_sequence,
+    forward_step,
+    initialize_rnn_parameters,
+)
 from domain.vocabulary import build_vocabulary, encode, one_hot
 
 
@@ -31,11 +36,28 @@ def test_forward_step_output_is_a_probability_distribution():
     h0 = np.zeros((8, 1))
     x = one_hot(vocab, 0)
 
-    _, _, p1 = forward_step(params, x, h0)
+    y = forward_step(params, x, h0)
+    _, _, p1 = y
 
     assert p1.shape == (vocab.size, 1)
     assert np.isclose(p1.sum(), 1.0)
     assert np.all(p1 >= 0)
+
+
+def test_forward_step_returns_named_output_fields():
+    vocab = build_vocabulary("helo")
+    params = initialize_rnn_parameters(vocab.size, hidden_size=8)
+    h0 = np.zeros((8, 1))
+    x = one_hot(vocab, 0)
+
+    y = forward_step(params, x, h0)
+
+    assert (
+        isinstance(y, RNNOutput),
+        y.hidden_state.shape,
+        y.logits.shape,
+        y.probabilities.shape,
+    ) == (True, (8, 1), (vocab.size, 1), (vocab.size, 1))
 
 
 def test_forward_step_depends_on_hidden_state_not_only_current_input():
